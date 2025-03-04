@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="pt">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Configuração do Bot</title>
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+        />
+    </head>
+    <body class="container mt-4">
+        <h1 class="mb-4">Configuração do Bot</h1>
+        <form id="config-form">
+            <!-- Estratégia Principal -->
+            <div class="mb-3">
+                <label class="form-label">Estratégia Principal</label>
+                <select
+                    class="form-select"
+                    name="MAIN_STRATEGY"
+                    id="MAIN_STRATEGY"
+                >
+                    <option value="getVortexTradeStrategy">Vortex</option>
+                    <option value="getMovingAverageTradeStrategy">
+                        Média Móvel
+                    </option>
+                </select>
+            </div>
+
+            <!-- Estratégia de Fallback -->
+            <div class="mb-3">
+                <label class="form-label">Ativar Estratégia de Fallback</label>
+                <select
+                    class="form-select"
+                    name="FALLBACK_ACTIVATED"
+                    id="FALLBACK_ACTIVATED"
+                >
+                    <option value="true">Sim</option>
+                    <option value="false">Não</option>
+                </select>
+            </div>
+
+            <!-- Ajustes Numéricos -->
+            <div class="row">
+                <div class="col-md-6">
+                    <label class="form-label"
+                        >Porcentagem de Perda Aceitável (%)</label
+                    >
+                    <input
+                        type="number"
+                        class="form-control"
+                        name="ACCEPTABLE_LOSS_PERCENTAGE"
+                        id="ACCEPTABLE_LOSS_PERCENTAGE"
+                        step="0.1"
+                    />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Stop Loss (%)</label>
+                    <input
+                        type="number"
+                        class="form-control"
+                        name="STOP_LOSS_PERCENTAGE"
+                        id="STOP_LOSS_PERCENTAGE"
+                        step="0.1"
+                    />
+                </div>
+            </div>
+
+            <div class="row mt-3">
+                <div class="col-md-6">
+                    <label class="form-label"
+                        >Intervalo entre Trades (segundos)</label
+                    >
+                    <input
+                        type="number"
+                        class="form-control"
+                        name="TEMPO_ENTRE_TRADES"
+                        id="TEMPO_ENTRE_TRADES"
+                    />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label"
+                        >Atraso entre Ordens (segundos)</label
+                    >
+                    <input
+                        type="number"
+                        class="form-control"
+                        name="DELAY_ENTRE_ORDENS"
+                        id="DELAY_ENTRE_ORDENS"
+                    />
+                </div>
+            </div>
+
+            <!-- Moedas negociadas -->
+            <div class="mt-3">
+                <h4>Moedas Negociadas</h4>
+                <div id="stocks-container"></div>
+            </div>
+
+            <button type="submit" class="btn btn-primary mt-3">Salvar</button>
+        </form>
+
+        <script>
+            async function carregarConfiguracao() {
+                let response = await fetch("/get-config");
+                let data = await response.json();
+
+                // Preenche os campos do formulário com os valores do JSON
+                document.getElementById("MAIN_STRATEGY").value =
+                    data.MAIN_STRATEGY;
+                document.getElementById("FALLBACK_ACTIVATED").value =
+                    data.FALLBACK_ACTIVATED.toString();
+                document.getElementById("ACCEPTABLE_LOSS_PERCENTAGE").value =
+                    data.ACCEPTABLE_LOSS_PERCENTAGE;
+                document.getElementById("STOP_LOSS_PERCENTAGE").value =
+                    data.STOP_LOSS_PERCENTAGE;
+                document.getElementById("TEMPO_ENTRE_TRADES").value =
+                    data.TEMPO_ENTRE_TRADES;
+                document.getElementById("DELAY_ENTRE_ORDENS").value =
+                    data.DELAY_ENTRE_ORDENS;
+
+                // Renderiza a lista de moedas negociadas
+                let stocksContainer =
+                    document.getElementById("stocks-container");
+                stocksContainer.innerHTML = "";
+                data.stocks_traded_list.forEach((stock, index) => {
+                    stocksContainer.innerHTML += `
+                        <div class="mb-3">
+                            <label class="form-label">Moeda ${index + 1}</label>
+                            <input type="text" class="form-control" name="stocks_traded_list[${index}][stockCode]" value="${
+                        stock.stockCode
+                    }">
+                            <input type="text" class="form-control mt-2" name="stocks_traded_list[${index}][operationCode]" value="${
+                        stock.operationCode
+                    }">
+                            <input type="number" class="form-control mt-2" name="stocks_traded_list[${index}][tradedQuantity]" value="${
+                        stock.tradedQuantity
+                    }">
+                        </div>
+                    `;
+                });
+            }
+
+            document.getElementById("config-form").onsubmit = async function (
+                e
+            ) {
+                e.preventDefault();
+
+                let formData = new FormData(e.target);
+                let jsonData = Object.fromEntries(formData.entries());
+
+                // Conversão de valores de string para número/boolean
+                jsonData.ACCEPTABLE_LOSS_PERCENTAGE = parseFloat(
+                    jsonData.ACCEPTABLE_LOSS_PERCENTAGE
+                );
+                jsonData.STOP_LOSS_PERCENTAGE = parseFloat(
+                    jsonData.STOP_LOSS_PERCENTAGE
+                );
+                jsonData.TEMPO_ENTRE_TRADES = parseInt(
+                    jsonData.TEMPO_ENTRE_TRADES
+                );
+                jsonData.DELAY_ENTRE_ORDENS = parseInt(
+                    jsonData.DELAY_ENTRE_ORDENS
+                );
+                jsonData.FALLBACK_ACTIVATED =
+                    jsonData.FALLBACK_ACTIVATED === "true";
+
+                await fetch("/update-config", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(jsonData),
+                });
+
+                alert("Configuração salva!");
+                carregarConfiguracao();
+            };
+
+            // Carregar configurações ao iniciar
+            carregarConfiguracao();
+        </script>
+    </body>
+</html>
