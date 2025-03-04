@@ -1,58 +1,90 @@
+# TraderBot
+
+Desenvolvido inicialmente por Gabriel Freitas
+
+- [YouTube](https://www.youtube.com/@DescolaDev)
+- [Instagram](https://instagram.com/gabrielfreitas.dev)
+
+### PARA DÚVIDAS E SUGESTÕES, PARTICIPE DO NOSSO DISCORD
+
+[Discord](https://discord.gg/PpmB3DwSSX)
+
+---
+
+### 1. Instale as seguintes bibliotecas:
+
+Digite no terminal (abra o terminal com `Ctrl+J`):
+
+```bash
+pip install pandas python-binance python-dotenv
+Here is a reorganized and better-designed version of your README.md:
+
+```markdown
 ######################################################################
 
 Desenvolvido por Gabriel Freitas
 
 Siga para conhecer mais o trabalho:
 
--   https://www.youtube.com/@DescolaDev
--   https://instagram.com/gabrielfreitas.dev
+- [YouTube](https://www.youtube.com/@DescolaDev)
+- [Instagram](https://instagram.com/gabrielfreitas.dev)
 
 ######################################################################
 
 # PARA DÚVIDAS E SUGESTÕES, PARTICIPE DO NOSSO DISCORD
 
-    https://discord.gg/PpmB3DwSSX
+[Discord](https://discord.gg/PpmB3DwSSX)
 
-# 1. Instale as seguintes bibliotecas:
+---
 
-    Digite no terminal (abra o terminal com ctrl+J):
+## 1. Instale as seguintes bibliotecas:
 
-    pip install pandas python-binance python-dotenv
+Digite no terminal (abra o terminal com `Ctrl+J`):
 
-# 2. Insira suas chaves da Binance no documento .env
+```bash
+pip install pandas python-binance python-dotenv
+```
 
-    🟡 IMPORTANTE: Elas devem estar entre aspas duplas
+### 2. Insira suas chaves da Binance no documento .env
 
-# 3. Ative o interpretador no VsCode. Selecione Python -> Conda/Base
+🟡 **IMPORTANTE:** Elas devem estar entre aspas duplas
 
-    Ctrl + shift + P
+### 3. Ative o interpretador no VSCode
 
-    Digitar Interpretador -> Selecionar Interpretador
+Selecione Python -> Conda/Base
 
-    Escolher Python -> "Base"
+1. Pressione `Ctrl + Shift + P`
+2. Digite `Interpretador`
+3. Selecione `Selecionar Interpretador`
+4. Escolha Python -> "Base"
 
-    🟡 IMPORTANTE: Depois de selecionar o interpretador, clique no ícone da LIXEIRA e abra o terminal novamente.
+🟡 **IMPORTANTE:** Depois de selecionar o interpretador, clique no ícone da lixeira e abra o terminal novamente.
 
-# 4. Configure o bot e suas variáveis
+### 4. Configure o bot e suas variáveis
 
-    Agora a configuração é feita no arquivo .\src\main.py
+A configuração é feita no arquivo `.\src\main.py`
 
-# 5. Código para rodar o bot
+### 5. Código para rodar o bot
 
-    Digite no terminal:
+Digite no terminal:
 
-    python .\src\main.py
+```bash
+python .\src\main.py
+```
 
-# 6. Código para rodar os backtests
+### 6. Código para rodar os backtests
 
-    Digite no terminal:
+Digite no terminal:
 
-    python .\src\backtests.py
+```bash
+python .\src\backtests.py
+```
 
-# 7. Termos de Uso
+### 7. Termos de Uso
 
-    Ao usar o código você aceita os termos disponíveis no arquivo LICENSE.
+Ao usar o código você aceita os termos disponíveis no arquivo LICENSE.
 
-    Além da licença de distribuição, o robô/código é disponibilizado para uso sob sua total responsabilidade, sem que os desenvolvedores assumam qualquer responsabilidade por perdas financeiras ou outros danos decorrentes de seu uso.
+Além da licença de distribuição, o robô/código é disponibilizado para uso sob sua total responsabilidade, sem que os desenvolvedores assumam qualquer responsabilidade por perdas financeiras ou outros danos decorrentes de seu uso.
 
-    Negocie com responsabilidade
+Negocie com responsabilidade.
+```
