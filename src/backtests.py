@@ -11,9 +11,9 @@ from strategies.ma_rsi_volume_strategy import getMovingAverageRSIVolumeStrategy
 # ------------------------------------------------------------------------
 # 🔎 AJUSTES BACKTESTS 🔎
 
-STOCK_CODE = "BNX"  # Código da Criptomoeda
-OPERATION_CODE = "BNXUSDT"  # Código da operação (cripto + moeda)
-INITIAL_BALANCE = 1000  # Valor de investimento inicial em USDT ou BRL
+STOCK_CODE = "SOL"  # Código da Criptomoeda
+OPERATION_CODE = "SOLUSDT"  # Código da operação (cripto + moeda)
+INITIAL_BALANCE = 25  # Valor de investimento inicial em USDT ou BRL
 
 # ----------------------------------------
 # 📊 PERÍODO DO CANDLE, SELECIONAR 1 📊
