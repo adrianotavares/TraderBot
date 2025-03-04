@@ -8,7 +8,7 @@ import asyncio
 
 # Define o logger
 logging.basicConfig(
-    filename="src/logs/trading_bot.log",
+    filename="./src/logs/trading_bot.log",
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
