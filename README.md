@@ -1,14 +1,5 @@
 # TraderBot
 
-Desenvolvido inicialmente por Gabriel Freitas
-
-- [YouTube](https://www.youtube.com/@DescolaDev)
-- [Instagram](https://instagram.com/gabrielfreitas.dev)
-
-### PARA DÚVIDAS E SUGESTÕES, PARTICIPE DO NOSSO DISCORD
-
-[Discord](https://discord.gg/PpmB3DwSSX)
-
 ---
 
 ### 1. Instale as seguintes bibliotecas:
@@ -88,3 +79,10 @@ Além da licença de distribuição, o robô/código é disponibilizado para uso
 
 Negocie com responsabilidade.
 ```
+
+---
+Desenvolvido inicialmente por Gabriel Freitas
+
+- [YouTube](https://www.youtube.com/@DescolaDev)
+- [Instagram](https://instagram.com/gabrielfreitas.dev)
+- [Discord](https://discord.gg/PpmB3DwSSX)
