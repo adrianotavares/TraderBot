@@ -1,6 +1,6 @@
 # TraderBot
 
-TraderBot é um robô de negociação automatizada desenvolvido para interagir com a API da Binance. Ele permite que os usuários realizem operações de compra e venda de criptomoedas de forma automatizada, utilizando estratégias personalizadas. Este projeto foi criado para ajudar traders a automatizar suas operações e realizar backtests de suas estratégias.
+TraderBot é um robô de negociação automatizada desenvolvido em Python para interagir com a API da Binance. Ele permite que os usuários realizem operações de compra e venda de criptomoedas de forma automatizada, utilizando estratégias personalizadas. Este projeto foi criado primeiramente para aprendizado visando ajudar traders a automatizar suas operações e realizar backtests de suas estratégias.
 
 ---
 
