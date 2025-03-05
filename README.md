@@ -2,9 +2,7 @@
 
 TraderBot é um robô de negociação automatizada desenvolvido em Python para interagir com a API da Binance. Ele permite que os usuários realizem operações de compra e venda de criptomoedas de forma automatizada, utilizando estratégias personalizadas. Este projeto foi criado primeiramente para aprendizado visando ajudar traders a automatizar suas operações e realizar backtests de suas estratégias.
 
----
-
-### 1. Instale as seguintes bibliotecas:
+### Bibliotecas
 
 Digite no terminal (abra o terminal com `Ctrl+J`):
 
@@ -12,11 +10,18 @@ Digite no terminal (abra o terminal com `Ctrl+J`):
 pip install pandas python-binance python-dotenv
 ```
 
-### 2. Insira suas chaves da Binance no documento .env
+### Chaves 
+
+Crie e insira suas chaves da BINANCE no arquivo .env
+
+```bash
+BINANCE_API_KEY = "<api_key>"
+BINANCE_SECRET_KEY = "<secret_key>"
+```
 
 🟡 **IMPORTANTE:** Elas devem estar entre aspas duplas
 
-### 3. Ative o interpretador no VSCode
+### Interpretador no VSCode
 
 Selecione Python -> Conda/Base
 
@@ -27,11 +32,15 @@ Selecione Python -> Conda/Base
 
 🟡 **IMPORTANTE:** Depois de selecionar o interpretador, clique no ícone da lixeira e abra o terminal novamente.
 
-### 4. Configure o bot e suas variáveis
+### Configuração do bot 
 
-A configuração é feita no arquivo `.\src\main.py`
+A configuração é feita no arquivo 
 
-### 5. Código para rodar o bot
+```bash
+.\src\main.py
+```
+
+### Rodar o Bot
 
 Digite no terminal:
 
@@ -39,7 +48,7 @@ Digite no terminal:
 python .\src\main.py
 ```
 
-### 6. Código para rodar os backtests
+### Rodar os Back Tests
 
 Digite no terminal:
 
@@ -47,17 +56,24 @@ Digite no terminal:
 python .\src\backtests.py
 ```
 
-### 7. Termos de Uso
-
-Ao usar o código você aceita os termos disponíveis no arquivo LICENSE.
+### Termos de Uso
 
 Além da licença de distribuição, o robô/código é disponibilizado para uso sob sua total responsabilidade, sem que os desenvolvedores assumam qualquer responsabilidade por perdas financeiras ou outros danos decorrentes de seu uso.
 
-Negocie com responsabilidade.
+_Negocie com responsabilidade._
 
----
-### Desenvolvido inicialmente por Gabriel Freitas
+Ao usar o código você aceita os termos de uso descritos nesse link: 
+
+[GNU AFFERO GENERAL PUBLIC LICENSE](./LICENSE)
+.
+
+### Autores
+
+Desenvolvido inicialmente por Gabriel Freitas.
 
 - [YouTube](https://www.youtube.com/@DescolaDev)
 - [Instagram](https://instagram.com/gabrielfreitas.dev)
 - [Discord](https://discord.gg/PpmB3DwSSX)
+
+Fork feito para esse repositório em 05/02/2025 por Adriano Tavares.
+
