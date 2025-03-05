@@ -1,79 +1,104 @@
 # TraderBot
+### Robô de Negociação Automatizada para Binance
 
-TraderBot é um robô de negociação automatizada desenvolvido em Python para interagir com a API da Binance. Ele permite que os usuários realizem operações de compra e venda de criptomoedas de forma automatizada, utilizando estratégias personalizadas. Este projeto foi criado primeiramente para aprendizado visando ajudar traders a automatizar suas operações e realizar backtests de suas estratégias.
+TraderBot é um robô de negociação automatizada desenvolvido em Python, projetado para interagir com a API da Binance. Ele permite que você automatize suas operações de compra e venda de criptomoedas, implementando estratégias de negociação personalizadas. Este projeto foi criado com o objetivo principal de aprendizado e para auxiliar traders a automatizar suas estratégias e realizar backtests eficazes.
 
-### Bibliotecas
+## Funcionalidades
 
-Abra o terminal com `Ctrl+J` e execute a linha abaixo para instalar as bibliotes:
+*   **Negociação Automatizada:** Execute ordens de compra e venda automaticamente com base em regras predefinidas.
+*   **Estratégias Personalizadas:** Implemente e teste suas próprias estratégias de negociação.
+*   **Backtesting:** Simule o desempenho de suas estratégias usando dados históricos da Binance.
+*   **Integração com a API da Binance:** Conecte-se à sua conta Binance através da API para negociação em tempo real.
 
-```bash
-pip install pandas python-binance python-dotenv
-```
+## Pré-requisitos
 
-### Chaves 
+*   Python 3.6 ou superior instalado.
+*   Conta na Binance com chaves de API habilitadas (crie em [Binance](https://www.binance.com/)).
 
-Crie e insira suas chaves da BINANCE no arquivo .env
+## Instalação
 
-```bash
-BINANCE_API_KEY = "<api_key>"
-BINANCE_SECRET_KEY = "<secret_key>"
-```
+1.  **Clone o repositório:**
 
-🟡 **IMPORTANTE:** Elas devem estar entre aspas duplas
+    ```bash
+    git clone <URL_DO_SEU_REPOSITÓRIO>
+    cd TraderBot
+    ```
 
-### Interpretador no VSCode
+2.  **Instale as dependências:**
 
-Selecione Python -> Conda/Base
+    Abra o terminal (geralmente com `Ctrl+J` no VSCode) e execute o seguinte comando:
 
-1. Pressione `Ctrl + Shift + P`
-2. Digite `Interpretador`
-3. Selecione `Selecionar Interpretador`
-4. Escolha Python -> "Base"
+    ```bash
+    pip install pandas python-binance python-dotenv
+    ```
 
-🟡 **IMPORTANTE:** Depois de selecionar o interpretador, clique no ícone da lixeira e abra o terminal novamente.
+## Configuração
 
-### Configuração do bot 
+1.  **Chaves da API Binance:**
 
-A configuração é feita no arquivo 
+    *   Crie um arquivo chamado `.env` na raiz do projeto.
+    *   Adicione suas chaves da API Binance ao arquivo `.env` no seguinte formato:
 
-```bash
-.\src\main.py
-```
+        ```python
+        BINANCE_API_KEY="<SUA_API_KEY>"
+        BINANCE_SECRET_KEY="<SUA_SECRET_KEY>"
+        ```
 
-### Rodar o Bot
+        **IMPORTANTE:** Certifique-se de colocar as chaves entre aspas duplas.  Nunca compartilhe suas chaves secretas com ninguém.
+        
+        **AVISO:**  Armazenar chaves de API em arquivos `.env` é prático para desenvolvimento local, mas considere alternativas mais seguras (como variáveis de ambiente do sistema) para ambientes de produção.
 
-Digite no terminal:
+2.  **Configuração do Interpretador Python no VSCode (Opcional):**
 
-```bash
-python .\src\main.py
-```
+    Se você estiver usando o VSCode, siga estas etapas para garantir que o interpretador correto seja selecionado:
 
-### Rodar os Back Tests
+    *   Pressione `Ctrl + Shift + P` para abrir a paleta de comandos.
+    *   Digite "Python: Selecionar Interpretador" e pressione Enter.
+    *   Escolha o interpretador Python correto (geralmente sua instalação base ou um ambiente Conda).
+    *   (Opcional) Se tiver problemas, reinicie o terminal integrado do VSCode clicando no ícone da lixeira e abrindo-o novamente.
 
-Digite no terminal:
+3.  **Configuração do Bot:**
 
-```bash
-python .\src\backtests.py
-```
+    A lógica principal de configuração do bot está localizada no arquivo `src/main.py`.  Edite este arquivo para personalizar as configurações da sua estratégia de negociação, como:
 
-### Termos de Uso
+    *   Pares de criptomoedas para negociar (ex: `BTCUSDT`, `ETHBTC`)
+    *   Valor/quantidade a ser negociado por ordem.
+    *   Indicadores técnicos e regras de entrada/saída.
 
-Além da licença de distribuição, o robô/código é disponibilizado para uso sob sua total responsabilidade, sem que os desenvolvedores assumam qualquer responsabilidade por perdas financeiras ou outros danos decorrentes de seu uso.
+## Execução
 
-_Negocie com responsabilidade._
+1.  **Rodar o Bot:**
 
-Ao usar o código você aceita os termos de uso descritos nesse link: 
+    Para iniciar o bot de negociação, execute o seguinte comando no terminal:
 
-[GNU AFFERO GENERAL PUBLIC LICENSE](./LICENSE)
-.
+    ```bash
+    python src/main.py
+    ```
 
-### Autores
+2.  **Rodar os Backtests:**
 
-Desenvolvido inicialmente por Gabriel Freitas.
+    Para executar simulações de backtesting com seus dados históricos, execute o seguinte comando:
 
-- [YouTube](https://www.youtube.com/@DescolaDev)
-- [Instagram](https://instagram.com/gabrielfreitas.dev)
-- [Discord](https://discord.gg/PpmB3DwSSX)
+    ```bash
+    python src/backtests.py
+    ```
 
-_Fork feito para esse repositório em 05/02/2025 por Adriano Tavares._
+## Termos de Uso e Isenção de Responsabilidade
 
+Este robô/código é fornecido "como está" e para fins educacionais. O uso é de sua total responsabilidade. Os desenvolvedores não se responsabilizam por quaisquer perdas financeiras ou outros danos decorrentes do uso deste código.
+
+**Negocie com responsabilidade e esteja ciente dos riscos envolvidos na negociação de criptomoedas.**
+
+Ao usar este código, você concorda com os termos da licença [GNU Affero General Public License](./LICENSE).
+
+## Autores
+
+*   Desenvolvido inicialmente por Gabriel Freitas.
+    *   [YouTube](https://www.youtube.com/@DescolaDev)
+    *   [Instagram](https://instagram.com/gabrielfreitas.dev)
+    *   [Discord](https://discord.gg/PpmB3DwSSX)
+*   Fork realizado em 05/02/2025 por Adriano Tavares.
+
+## Contribuição
+
+Contribuições são bem-vindas! Sinta-se à vontade para abrir issues ou enviar pull requests para melhorar o TraderBot.
