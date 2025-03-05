@@ -75,5 +75,5 @@ Desenvolvido inicialmente por Gabriel Freitas.
 - [Instagram](https://instagram.com/gabrielfreitas.dev)
 - [Discord](https://discord.gg/PpmB3DwSSX)
 
-Fork feito para esse repositório em 05/02/2025 por Adriano Tavares.
+_Fork feito para esse repositório em 05/02/2025 por Adriano Tavares._
 
