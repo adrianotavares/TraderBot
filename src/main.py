@@ -1,10 +1,17 @@
 import threading
 import time
+import logging
+import asyncio
 from modules.BinanceTraderBot import BinanceTraderBot
 from binance.client import Client
 from Models.StockStartModel import StockStartModel
-import logging
-import asyncio
+from strategies.moving_average_antecipation import getMovingAverageAntecipationTradeStrategy
+from strategies.moving_average import getMovingAverageTradeStrategy
+
+# from strategies.rsi_strategy import getRsiTradeStrategy
+# from strategies.vortex_strategy import getVortexTradeStrategy
+# from strategies.ma_rsi_volume_strategy import getMovingAverageRSIVolumeStrategy
+# from strategies.vortex_strategy import getVortexTradeStrategy
 
 # Define o logger
 logging.basicConfig(
@@ -13,21 +20,12 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
-from strategies.moving_average_antecipation import getMovingAverageAntecipationTradeStrategy
-from strategies.moving_average import getMovingAverageTradeStrategy
-
-# from strategies.vortex_strategy import getVortexTradeStrategy
-from strategies.rsi_strategy import getRsiTradeStrategy
-from strategies.vortex_strategy import getVortexTradeStrategy
-from strategies.ma_rsi_volume_strategy import getMovingAverageRSIVolumeStrategy
-
 # fmt: off
-# -------------------------------------------------------------------------------------------------
-# 🟢🟢🟢 CONFIGURAÇÕES - PODEM ALTERAR - INICIO 🟢🟢🟢
+# -----------------------------------------------------------------
+# CONFIGURAÇÕES - INICIO
+# -----------------------------------------------------------------
 
-# ------------------------------------------------------------------
-# 🚀 AJUSTES DE ESTRATÉGIA 🚀
-
+# -----------------------------------------------------------------
 # 🏆 ESTRATÉGIA PRINCIPAL 🏆
 MAIN_STRATEGY      = getMovingAverageAntecipationTradeStrategy
 MAIN_STRATEGY_ARGS = {"volatility_factor": 0.5, # Interfere na antecipação e nos lances de compra de venda limitados 
@@ -40,6 +38,9 @@ MAIN_STRATEGY_ARGS = {"volatility_factor": 0.5, # Interfere na antecipação e n
 # MAIN_STRATEGY = getVortexTradeStrategy
 # MAIN_STRATEGY_ARGS = {}
 
+# MAIN_STRATEGY = getRsiTradeStrategy
+# MAIN_STRATEGY_ARGS = {}
+
 # MAIN_STRATEGY = getMovingAverageRSIVolumeStrategy
 # MAIN_STRATEGY_ARGS = {  "fast_window":  9,
 #                         "slow_window":  21,
@@ -49,17 +50,13 @@ MAIN_STRATEGY_ARGS = {"volatility_factor": 0.5, # Interfere na antecipação e n
 #                         "volume_multiplier":  1.5
 #                         }
 
-# MAIN_STRATEGY = getRsiTradeStrategy
-# MAIN_STRATEGY_ARGS = {}
-
-# -----------------
-
+# -----------------------------------------------------------------
 # 🥈 ESTRATÉGIA DE FALLBACK (reserva) 🥈
 FALLBACK_ACTIVATED     = True      
 FALLBACK_STRATEGY      = getMovingAverageTradeStrategy
 FALLBACK_STRATEGY_ARGS = {}
 
-# ------------------------------------------------------------------
+# -----------------------------------------------------------------
 # 🛠️ AJUSTES TÉCNICOS 🛠️
 
 # Ajustes de LOSS PROTECTION
@@ -70,18 +67,12 @@ STOP_LOSS_PERCENTAGE       = 3.5       # (Em base 100%) % Máxima de loss que el
 TP_AT_PERCENTAGE     = [2, 4, 8]       # Em [X%, Y%]                       
 TP_AMOUNT_PERCENTAGE = [50, 50, 100]   # Vende [A%, B%]
 
-
-# ------------------------------------------------------------------
-# ⌛ AJUSTES DE TEMPO
-
+# AJUSTES DE TEMPO
 CANDLE_PERIOD      = Client.KLINE_INTERVAL_1HOUR       # Périodo do candle análisado
 TEMPO_ENTRE_TRADES = 30 * 60                           # Tempo que o bot espera para verificar o mercado (em segundos)
 DELAY_ENTRE_ORDENS = 60 * 60                           # Tempo que o bot espera depois de realizar uma ordem de compra ou venda (ajuda a diminuir trades de borda)
 
-
-# ------------------------------------------------------------------
-# 🪙 MOEDAS NEGOCIADAS
-
+# MOEDAS NEGOCIADAS
 SOL_USDT = StockStartModel(      stockCode = "SOL",
                              operationCode = "SOLUSDT",
                             tradedQuantity = 0.1,
@@ -132,16 +123,15 @@ HMSTR_USDT = StockStartModel(    stockCode = "HMSTR",
 #                             mainStrategy = MAIN_STRATEGY, mainStrategyArgs = MAIN_STRATEGY_ARGS, fallbackStrategy = FALLBACK_STRATEGY, fallbackStrategyArgs = FALLBACK_STRATEGY_ARGS,
 #                             candlePeriod = CANDLE_PERIOD, stopLossPercentage = STOP_LOSS_PERCENTAGE, tempoEntreTrades = TEMPO_ENTRE_TRADES, delayEntreOrdens = DELAY_ENTRE_ORDENS, acceptableLossPercentage = ACCEPTABLE_LOSS_PERCENTAGE, fallBackActivated= FALLBACK_ACTIVATED, takeProfitAtPercentage=TP_AT_PERCENTAGE, takeProfitAmountPercentage=TP_AMOUNT_PERCENTAGE)
 
-
-# ⤵️ Array que DEVE CONTER as moedas que serão negociadas
+# Array de moedas que serão negociadas
 stocks_traded_list = [SOL_USDT]
 
-THREAD_LOCK = True # True = Executa 1 moeda por vez | False = Executa todas simultânemaente
+# True = Executa 1 moeda por vez | False = Executa todas simultânemaente
+THREAD_LOCK = True 
 
-# 🔴🔴🔴 CONFIGURAÇÕES - FIM 🔴🔴🔴
-# -------------------------------------------------------------------------------------------------
-
-
+# -----------------------------------------------------------------
+# CONFIGURAÇÕES - FIM
+# -----------------------------------------------------------------
 
 # 🔁 LOOP PRINCIPAL
 
@@ -172,7 +162,6 @@ def trader_loop(stockStart: StockStartModel):
                                 , fallback_strategy = stockStart.fallbackStrategy
                                 , fallback_strategy_args = stockStart.fallbackStrategyArgs)
     
-
     total_executed:int = 1
 
     while(True):
@@ -190,7 +179,6 @@ def trader_loop(stockStart: StockStartModel):
             print(f"------------------------------------------------")
             total_executed += 1
         time.sleep(MaTrader.time_to_sleep)
-
 
 # Criando e iniciando uma thread para cada objeto
 threads = []
@@ -211,5 +199,4 @@ except KeyboardInterrupt:
     print("\nPrograma encerrado pelo usuário.")
 
 # -----------------------------------------------------------------
-
 # fmt: on
