@@ -68,7 +68,6 @@ THREAD_LOCK = config["THREAD_LOCK"]
 
 thread_lock = threading.Lock()
 
-
 def trader_loop(stockStart: StockStartModel):
     MaTrader = BinanceTraderBot(
         stock_code=stockStart.stockCode,

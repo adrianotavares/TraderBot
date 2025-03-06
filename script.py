@@ -1,6 +1,6 @@
+import os
 import pandas as pd
 from binance.client import Client
-import os
 
 # Replace with your API keys (or use None for public access)
 API_KEY = os.getenv("BINANCE_API_KEY")

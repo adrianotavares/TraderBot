@@ -1,0 +1,5 @@
+2025-03-06 15:08:24,403 - ERROR - Erro no take profit: O initial_price não pode ser zero.
+2025-03-06 15:08:25,120 - ERROR - Erro ao enviar ordem limitada de VENDA: APIError(code=-1013): Filter failure: NOTIONAL
+2025-03-06 15:17:55,988 - ERROR - Erro no take profit: O initial_price não pode ser zero.
+2025-03-06 15:42:32,952 - ERROR - Erro no take profit: O initial_price não pode ser zero.
+2025-03-06 16:12:35,623 - ERROR - Erro no take profit: O initial_price não pode ser zero.

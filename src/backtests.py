@@ -11,27 +11,29 @@ from strategies.ma_rsi_volume_strategy import getMovingAverageRSIVolumeStrategy
 # ------------------------------------------------------------------------
 # 🔎 AJUSTES BACKTESTS 🔎
 
-STOCK_CODE = "SOL"  # Código da Criptomoeda
-OPERATION_CODE = "SOLUSDT"  # Código da operação (cripto + moeda)
-INITIAL_BALANCE = 25  # Valor de investimento inicial em USDT ou BRL
+# STOCK_CODE      = "SOL"     # Código da Criptomoeda
+# OPERATION_CODE  = "SOLUSDT" # Código da operação (cripto + moeda)
+# INITIAL_BALANCE = 25        # Valor de investimento inicial em USDT ou BRL
+
+STOCK_CODE      = "HMSTR"     # Código da Criptomoeda
+OPERATION_CODE  = "HMSTRUSDT" # Código da operação (cripto + moeda)
+INITIAL_BALANCE = 8           # Valor de investimento inicial em USDT ou BRL
 
 # ----------------------------------------
 # 📊 PERÍODO DO CANDLE, SELECIONAR 1 📊
 
-CANDLE_PERIOD = Client.KLINE_INTERVAL_1HOUR
-# CANDLE_PERIOD = Client.KLINE_INTERVAL_15MINUTE
-
+CANDLE_PERIOD   = Client.KLINE_INTERVAL_1HOUR
 CLANDES_RODADOS = 7 * 24
 
 # ------------------------------------------------------------------------
 # ⏬ SELEÇÃO DE ESTRATÉGIAS ⏬
 
 devTrader = BinanceTraderBot(
-    stock_code=STOCK_CODE,
-    operation_code=OPERATION_CODE,
-    traded_quantity=0,
-    traded_percentage=100,
-    candle_period=CANDLE_PERIOD,
+    stock_code        = STOCK_CODE,
+    operation_code    = OPERATION_CODE,
+    traded_quantity   = 0,
+    traded_percentage = 100,
+    candle_period     = CANDLE_PERIOD,
     # volatility_factor=VOLATILITY_FACTOR,
 )
 
@@ -40,13 +42,13 @@ devTrader.updateAllData()
 
 print(f"\n{STOCK_CODE} - UT BOTS - {str(CANDLE_PERIOD)}")
 backtestRunner(
-    stock_data=devTrader.stock_data,
-    strategy_function=utBotAlerts,
-    periods=CLANDES_RODADOS,
-    initial_balance=INITIAL_BALANCE,
-    atr_multiplier=2,
-    atr_period=1,
-    verbose=False,
+    stock_data        = devTrader.stock_data,
+    strategy_function = utBotAlerts,
+    periods           = CLANDES_RODADOS,
+    initial_balance   = INITIAL_BALANCE,
+    atr_multiplier    = 2,
+    atr_period        = 1,
+    verbose           = False,
 )
 
 devTrader.updateAllData()
