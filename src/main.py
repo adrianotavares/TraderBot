@@ -29,7 +29,6 @@ from strategies.ma_rsi_volume_strategy import getMovingAverageRSIVolumeStrategy
 # 🚀 AJUSTES DE ESTRATÉGIA 🚀
 
 # 🏆 ESTRATÉGIA PRINCIPAL 🏆
-
 MAIN_STRATEGY = getMovingAverageAntecipationTradeStrategy
 MAIN_STRATEGY_ARGS = {"volatility_factor": 0.5, # Interfere na antecipação e nos lances de compra de venda limitados 
                       "fast_window": 9,
@@ -56,7 +55,6 @@ MAIN_STRATEGY_ARGS = {"volatility_factor": 0.5, # Interfere na antecipação e n
 # -----------------
 
 # 🥈 ESTRATÉGIA DE FALLBACK (reserva) 🥈
-
 FALLBACK_ACTIVATED  = True      
 FALLBACK_STRATEGY = getMovingAverageTradeStrategy
 FALLBACK_STRATEGY_ARGS = {}
@@ -76,11 +74,10 @@ TP_AMOUNT_PERCENTAGE =  [50, 50, 100]   # Vende [A%, B%]
 # ------------------------------------------------------------------
 # ⌛ AJUSTES DE TEMPO
 
-# CANDLE_PERIOD = Client.KLINE_INTERVAL_1HOUR # Périodo do candle análisado
-CANDLE_PERIOD = Client.KLINE_INTERVAL_15MINUTE # Périodo do candle análisado
-
-TEMPO_ENTRE_TRADES          = 30 * 60            # Tempo que o bot espera para verificar o mercado (em segundos)
-DELAY_ENTRE_ORDENS          = 60 * 60           # Tempo que o bot espera depois de realizar uma ordem de compra ou venda (ajuda a diminuir trades de borda)
+# CANDLE_PERIOD             = Client.KLINE_INTERVAL_1HOUR       # Périodo do candle análisado
+CANDLE_PERIOD               = Client.KLINE_INTERVAL_15MINUTE    # Périodo do candle análisado
+TEMPO_ENTRE_TRADES          = 30 * 60                           # Tempo que o bot espera para verificar o mercado (em segundos)
+DELAY_ENTRE_ORDENS          = 60 * 60                           # Tempo que o bot espera depois de realizar uma ordem de compra ou venda (ajuda a diminuir trades de borda)
 
 
 # ------------------------------------------------------------------
@@ -126,6 +123,7 @@ THREAD_LOCK = True # True = Executa 1 moeda por vez | False = Executa todas simu
 thread_lock = threading.Lock()
 
 def trader_loop(stockStart: StockStartModel):
+    
     try:
         asyncio.set_event_loop(asyncio.new_event_loop())  # Adiciona um loop de eventos na thread
     except Exception as e:
