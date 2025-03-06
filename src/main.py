@@ -124,8 +124,9 @@ thread_lock = threading.Lock()
 
 def trader_loop(stockStart: StockStartModel):
     
+    # Adiciona um loop de eventos na thread
     try:
-        asyncio.set_event_loop(asyncio.new_event_loop())  # Adiciona um loop de eventos na thread
+        asyncio.set_event_loop(asyncio.new_event_loop()) 
     except Exception as e:
         print(f"Erro ao definir event loop: {e}")
         
