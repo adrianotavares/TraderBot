@@ -1,8 +1,10 @@
 import pandas as pd
 
+MA_fast = 7
+MA_slow = 25
 
 # Estratégia Simples de Médias Móveis
-def getMovingAverageTradeStrategy(stock_data: pd.DataFrame, fast_window=7, slow_window=40, verbose=True):
+def getMovingAverageTradeStrategy(stock_data: pd.DataFrame, fast_window=MA_fast, slow_window=MA_slow, verbose=True):
     """
     Estratégia de Médias Móveis Simples.
 
@@ -42,8 +44,8 @@ def getMovingAverageTradeStrategy(stock_data: pd.DataFrame, fast_window=7, slow_
     if verbose:
         print("-------")
         print("📊 Estratégia: Moving Average Simples")
-        print(f" | Última Média Rápida: {last_ma_fast:.3f}")
-        print(f" | Última Média Lenta: {last_ma_slow:.3f}")
+        print(f" | Última Média Rápida: MA({MA_fast}) = {last_ma_fast:.3f}")
+        print(f" | Última Média Lenta: MA({MA_slow}) = {last_ma_slow:.3f}")
         print(f' | Decisão: {"Comprar" if trade_decision == True else "Vender" if trade_decision == False else "Nenhuma"}')
 
         print("-------")

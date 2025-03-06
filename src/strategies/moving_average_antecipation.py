@@ -1,10 +1,13 @@
 import pandas as pd
 
+MA_fast = 7
+MA_slow = 25
 
 # Estratégia de Antecipação de Média Móvel
 def getMovingAverageAntecipationTradeStrategy(
-    stock_data: pd.DataFrame, volatility_factor: float, fast_window=7, slow_window=40, verbose=True
+        stock_data: pd.DataFrame, volatility_factor: float, fast_window=MA_fast, slow_window=MA_slow, verbose=True
 ):
+
     # Garantimos que há dados suficientes antes de calcular as médias móveis
     if len(stock_data) < slow_window:
         if verbose:
@@ -63,8 +66,8 @@ def getMovingAverageAntecipationTradeStrategy(
     if verbose:
         print("-------")
         print("📊 Estratégia: Moving Average Antecipation")
-        print(f" | Última Média Rápida: {last_ma_fast:.3f}")
-        print(f" | Última Média Lenta: {last_ma_slow:.3f}")
+        print(f" | Última Média Rápida: MA({MA_fast}) = {last_ma_fast:.3f}")
+        print(f" | Última Média Lenta: MA({MA_slow}) = {last_ma_slow:.3f}")
         print(f" | Última Volatilidade: {last_volatility:.3f}")
         print(f" | Diferença Atual: {current_difference:.3f}")
         print(f" | Diferença para antecipação: {volatility_factor * last_volatility:.3f}")

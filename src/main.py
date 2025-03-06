@@ -134,7 +134,7 @@ HMSTR_USDT = StockStartModel(    stockCode = "HMSTR",
 
 
 # ⤵️ Array que DEVE CONTER as moedas que serão negociadas
-stocks_traded_list = [SOL_USDT, HMSTR_USDT]
+stocks_traded_list = [SOL_USDT]
 
 THREAD_LOCK = True # True = Executa 1 moeda por vez | False = Executa todas simultânemaente
 
