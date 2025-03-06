@@ -40,8 +40,8 @@ TraderBot é um robô de negociação automatizada desenvolvido em Python, proje
     *   Adicione suas chaves da API Binance ao arquivo `.env` no seguinte formato:
 
         ```python
-        BINANCE_API_KEY="<SUA_API_KEY>"
-        BINANCE_SECRET_KEY="<SUA_SECRET_KEY>"
+        BINANCE_API_KEY="SUA_API_KEY"
+        BINANCE_SECRET_KEY="SUA_SECRET_KEY"
         ```
 
         **IMPORTANTE:** Certifique-se de colocar as chaves entre aspas duplas.  Nunca compartilhe suas chaves secretas com ninguém.
