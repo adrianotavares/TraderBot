@@ -15,15 +15,18 @@ from strategies.ma_rsi_volume_strategy import getMovingAverageRSIVolumeStrategy
 # OPERATION_CODE  = "SOLUSDT" # Código da operação (cripto + moeda)
 # INITIAL_BALANCE = 25        # Valor de investimento inicial em USDT ou BRL
 
-STOCK_CODE      = "HMSTR"     # Código da Criptomoeda
-OPERATION_CODE  = "HMSTRUSDT" # Código da operação (cripto + moeda)
-INITIAL_BALANCE = 8           # Valor de investimento inicial em USDT ou BRL
+STOCK_CODE      = "BTC"     # Código da Criptomoeda
+OPERATION_CODE  = "BTCUSDT" # Código da operação (cripto + moeda)
+INITIAL_BALANCE = 0.00025   # Valor de investimento inicial em USDT ou BRL
 
 # ----------------------------------------
 # 📊 PERÍODO DO CANDLE, SELECIONAR 1 📊
 
-CANDLE_PERIOD   = Client.KLINE_INTERVAL_1HOUR
-CLANDES_RODADOS = 7 * 24
+CANDLE_PERIOD     = Client.KLINE_INTERVAL_4HOUR
+CLANDES_RODADOS   = 7 * 24
+VOLATILITY_FACTOR = 0.5
+FAST_WINDOW       = 7
+SLOW_WINDOW       = 30
 
 # ------------------------------------------------------------------------
 # ⏬ SELEÇÃO DE ESTRATÉGIAS ⏬
@@ -51,60 +54,57 @@ backtestRunner(
     verbose           = False,
 )
 
-devTrader.updateAllData()
-
 print(f"\n{STOCK_CODE} - MA RSI e VOLUME - {str(CANDLE_PERIOD)}")
 backtestRunner(
-    stock_data=devTrader.stock_data,
-    strategy_function=getMovingAverageRSIVolumeStrategy,
-    periods=CLANDES_RODADOS,
-    initial_balance=INITIAL_BALANCE,
-    verbose=False,
+    stock_data        = devTrader.stock_data,
+    strategy_function = getMovingAverageRSIVolumeStrategy,
+    periods           = CLANDES_RODADOS,
+    initial_balance   = INITIAL_BALANCE,
+    verbose           = False,
 )
 
-
+  
 print(f"\n{STOCK_CODE} - MA ANTECIPATION - {str(CANDLE_PERIOD)}")
 backtestRunner(
-    stock_data=devTrader.stock_data,
-    strategy_function=getMovingAverageAntecipationTradeStrategy,
-    periods=CLANDES_RODADOS,
-    initial_balance=INITIAL_BALANCE,
-    volatility_factor=0.5,
-    fast_window=7,
-    slow_window=40,
-    verbose=False,
+    stock_data        = devTrader.stock_data,
+    strategy_function = getMovingAverageAntecipationTradeStrategy,
+    periods           = CLANDES_RODADOS,
+    initial_balance   = INITIAL_BALANCE,
+    volatility_factor = VOLATILITY_FACTOR,
+    fast_window       = FAST_WINDOW,
+    slow_window       = SLOW_WINDOW,
+    verbose           = False,
 )
 
 print(f"\n{STOCK_CODE} - MA SIMPLES FALLBACK - {str(CANDLE_PERIOD)}")
 backtestRunner(
-    stock_data=devTrader.stock_data,
-    strategy_function=getMovingAverageTradeStrategy,
-    periods=CLANDES_RODADOS,
-    initial_balance=INITIAL_BALANCE,
-    fast_window=7,
-    slow_window=40,
-    verbose=False,
+    stock_data        = devTrader.stock_data,
+    strategy_function = getMovingAverageTradeStrategy,
+    periods           = CLANDES_RODADOS,
+    initial_balance   = INITIAL_BALANCE,
+    fast_window       = FAST_WINDOW,
+    slow_window       = SLOW_WINDOW,
+    verbose           = False,
 )
 
 print(f"\n{STOCK_CODE} - RSI - {str(CANDLE_PERIOD)}")
 backtestRunner(
-    stock_data=devTrader.stock_data,
-    strategy_function=getRsiTradeStrategy,
-    periods=CLANDES_RODADOS,
-    initial_balance=INITIAL_BALANCE,
-    low=30,
-    high=70,
-    verbose=False,
+    stock_data        = devTrader.stock_data,
+    strategy_function = getRsiTradeStrategy,
+    periods           = CLANDES_RODADOS,
+    initial_balance   = INITIAL_BALANCE,
+    low               = 30,
+    high              = 70,
+    verbose           = False,
 )
 
 print(f"\n{STOCK_CODE} - VORTEX - {str(CANDLE_PERIOD)}")
 backtestRunner(
-    stock_data=devTrader.stock_data,
-    strategy_function=getVortexTradeStrategy,
-    periods=CLANDES_RODADOS,
-    initial_balance=INITIAL_BALANCE,
-    verbose=False,
+    stock_data        = devTrader.stock_data,
+    strategy_function = getVortexTradeStrategy,
+    periods           = CLANDES_RODADOS,
+    initial_balance   = INITIAL_BALANCE,
+    verbose           = False,
 )
-
 
 print("\n\n")

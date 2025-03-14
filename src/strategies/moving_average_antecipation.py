@@ -1,7 +1,7 @@
 import pandas as pd
 
 MA_fast = 7
-MA_slow = 25
+MA_slow = 30
 
 # Estratégia de Antecipação de Média Móvel
 def getMovingAverageAntecipationTradeStrategy(

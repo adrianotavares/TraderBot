@@ -6,6 +6,14 @@ def getVortexTradeStrategy(stock_data: pd.DataFrame, verbose=True):
     """
     Estratégia baseada no Indicador Vortex.
     Retorna True se a posição deve estar comprada e False se deve estar vendida.
+
+    O Vortex Indicator (VI) é um indicador técnico usado para identificar o início de novas tendências. Ele consiste em duas linhas:
+    -> VI+ (Vortex Positivo): Mede a tendência de alta.
+    -> VI- (Vortex Negativo): Mede a tendência de baixa.
+
+    A interpretação básica é:
+    -> VI+ cruzando ACIMA de VI-: Sinal de compra (possível início de uma tendência de alta).
+    -> VI- cruzando ACIMA de VI+: Sinal de venda (possível início de uma tendência de baixa).
     """
 
     stock_data = stock_data.copy()
