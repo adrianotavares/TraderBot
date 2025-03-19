@@ -75,7 +75,7 @@ DELAY_ENTRE_ORDENS = 60 * 60                           # Tempo que o bot espera 
 
 BTC_USDT = StockStartModel(      stockCode = "BTC",
                              operationCode = "BTCUSDT",
-                            tradedQuantity = 0.00025,
+                            tradedQuantity = 0.0003,
                               mainStrategy = MAIN_STRATEGY, 
                           mainStrategyArgs = MAIN_STRATEGY_ARGS, 
                           fallbackStrategy = FALLBACK_STRATEGY, 
@@ -150,7 +150,7 @@ ETH_USDT = StockStartModel(      stockCode = "ETH",
 #                             candlePeriod = CANDLE_PERIOD, stopLossPercentage = STOP_LOSS_PERCENTAGE, tempoEntreTrades = TEMPO_ENTRE_TRADES, delayEntreOrdens = DELAY_ENTRE_ORDENS, acceptableLossPercentage = ACCEPTABLE_LOSS_PERCENTAGE, fallBackActivated= FALLBACK_ACTIVATED, takeProfitAtPercentage=TP_AT_PERCENTAGE, takeProfitAmountPercentage=TP_AMOUNT_PERCENTAGE)
 
 # Array de moedas que serão negociadas
-stocks_traded_list = [BTC_USDT,ETH_USDT]
+stocks_traded_list = [BTC_USDT]
 
 # True = Executa 1 moeda por vez | False = Executa todas simultânemaente
 THREAD_LOCK = True 
