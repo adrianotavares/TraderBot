@@ -51,7 +51,7 @@ VORTEX_STRATEGY_ARGS = {}
 
 # -----------------------------------------------------------------
 # 🥈 ESTRATÉGIA DE FALLBACK (reserva) 🥈
-FALLBACK_ACTIVATED     = True      
+FALLBACK_ACTIVATED     = True
 FALLBACK_STRATEGY      = getMovingAverageTradeStrategy
 FALLBACK_STRATEGY_ARGS = {}
 
@@ -59,7 +59,7 @@ FALLBACK_STRATEGY_ARGS = {}
 # 🛠️ AJUSTES TÉCNICOS 🛠️
 
 # Ajustes de LOSS PROTECTION
-ACCEPTABLE_LOSS_PERCENTAGE = 2         # (Em base 100%) O quando o bot aceita perder de % (se for negativo, o bot só aceita lucro)
+ACCEPTABLE_LOSS_PERCENTAGE = -1         # (Em base 100%) O quando o bot aceita perder de % (se for negativo, o bot só aceita lucro)
 STOP_LOSS_PERCENTAGE       = 3.5       # (Em base 100%) % Máxima de loss que ele aceita para vender à mercado independente
 
 # Ajustes de TAKE PROFIT (Em base 100%)                        
@@ -72,7 +72,6 @@ TEMPO_ENTRE_TRADES = 30 * 60                           # Tempo que o bot espera 
 DELAY_ENTRE_ORDENS = 60 * 60                           # Tempo que o bot espera depois de realizar uma ordem de compra ou venda (ajuda a diminuir trades de borda)
 
 # MOEDAS NEGOCIADAS
-
 BTC_USDT = StockStartModel(      stockCode = "BTC",
                              operationCode = "BTCUSDT",
                             tradedQuantity = 0.0003,
