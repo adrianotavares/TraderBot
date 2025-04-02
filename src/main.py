@@ -8,9 +8,9 @@ from Models.StockStartModel import StockStartModel
 from strategies.moving_average_antecipation import getMovingAverageAntecipationTradeStrategy
 from strategies.moving_average import getMovingAverageTradeStrategy
 from strategies.vortex_strategy import getVortexTradeStrategy
-
-# from strategies.ma_rsi_volume_strategy import getMovingAverageRSIVolumeStrategy
-# from strategies.rsi_strategy import getRsiTradeStrategy
+from strategies.ma_rsi_volume_strategy import getMovingAverageRSIVolumeStrategy
+from strategies.rsi_strategy import getRsiTradeStrategy
+from strategies.weapon_candle_trade_strategy import getWeaponCandleTradeStrategy
 
 # Define o logger
 logging.basicConfig(
@@ -22,17 +22,19 @@ logging.basicConfig(
 # fmt: off
 # -----------------------------------------------------------------
 # CONFIGURAÇÕES - INICIO
-# -----------------------------------------------------------------
 
-# -----------------------------------------------------------------
-# 🏆 ESTRATÉGIA PRINCIPAL 🏆
-MAIN_STRATEGY      = getMovingAverageAntecipationTradeStrategy
-MAIN_STRATEGY_ARGS = {"volatility_factor": 0.5, # Interfere na antecipação e nos lances de compra de venda limitados 
-                            "fast_window": 7,
-                            "slow_window": 25}
+# ESTRATÉGIA PRINCIPAL
 
-VORTEX_STRATEGY = getVortexTradeStrategy
-VORTEX_STRATEGY_ARGS = {}
+# MAIN_STRATEGY      = getMovingAverageAntecipationTradeStrategy
+# MAIN_STRATEGY_ARGS = {"volatility_factor": 0.5, # Interfere na antecipação e nos lances de compra de venda limitados 
+#                             "fast_window": 7,
+#                             "slow_window": 25}
+
+# VORTEX_STRATEGY = getVortexTradeStrategy
+# VORTEX_STRATEGY_ARGS = {}
+
+MAIN_STRATEGY = getWeaponCandleTradeStrategy
+MAIN_STRATEGY_ARGS = {}
 
 # MAIN_STRATEGY = getVortexTradeStrategy
 # MAIN_STRATEGY_ARGS = {}
@@ -41,40 +43,38 @@ VORTEX_STRATEGY_ARGS = {}
 # MAIN_STRATEGY_ARGS = {}
 
 # MAIN_STRATEGY = getMovingAverageRSIVolumeStrategy
-# MAIN_STRATEGY_ARGS = {  "fast_window":  9,
-#                         "slow_window":  21,
+# MAIN_STRATEGY_ARGS = {  "fast_window":  7,
+#                         "slow_window":  25,
 #                         "rsi_window":  14,
 #                         "rsi_overbought":  70,
 #                         "rsi_oversold":  30,
 #                         "volume_multiplier":  1.5
 #                         }
 
-# -----------------------------------------------------------------
-# 🥈 ESTRATÉGIA DE FALLBACK (reserva) 🥈
+# ESTRATÉGIA DE FALLBACK (reserva)
 FALLBACK_ACTIVATED     = True
 FALLBACK_STRATEGY      = getMovingAverageTradeStrategy
 FALLBACK_STRATEGY_ARGS = {}
 
-# -----------------------------------------------------------------
-# 🛠️ AJUSTES TÉCNICOS 🛠️
+# AJUSTES TÉCNICOS
 
 # Ajustes de LOSS PROTECTION
 ACCEPTABLE_LOSS_PERCENTAGE = -1         # (Em base 100%) O quando o bot aceita perder de % (se for negativo, o bot só aceita lucro)
 STOP_LOSS_PERCENTAGE       = 3.5       # (Em base 100%) % Máxima de loss que ele aceita para vender à mercado independente
 
 # Ajustes de TAKE PROFIT (Em base 100%)                        
-TP_AT_PERCENTAGE     = [5, 10, 25]     # Em [X%, Y%]                       
+TP_AT_PERCENTAGE     = [10, 25, 50]     # Em [X%, Y%]                       
 TP_AMOUNT_PERCENTAGE = [50, 50, 100]   # Vende [A%, B%]
 
 # AJUSTES DE TEMPO
-CANDLE_PERIOD      = Client.KLINE_INTERVAL_4HOUR    # Périodo do candle análisado
-TEMPO_ENTRE_TRADES = 30 * 60                           # Tempo que o bot espera para verificar o mercado (em segundos)
-DELAY_ENTRE_ORDENS = 60 * 60                           # Tempo que o bot espera depois de realizar uma ordem de compra ou venda (ajuda a diminuir trades de borda)
+CANDLE_PERIOD      = Client.KLINE_INTERVAL_15MINUTE    # Périodo do candle análisado
+TEMPO_ENTRE_TRADES = 15 * 60                           # Tempo que o bot espera para verificar o mercado (em segundos)
+DELAY_ENTRE_ORDENS = 30 * 60                           # Tempo que o bot espera depois de realizar uma ordem de compra ou venda (ajuda a diminuir trades de borda)
 
 # MOEDAS NEGOCIADAS
 BTC_USDT = StockStartModel(      stockCode = "BTC",
                              operationCode = "BTCUSDT",
-                            tradedQuantity = 0.0003,
+                            tradedQuantity = 0.0017,
                               mainStrategy = MAIN_STRATEGY, 
                           mainStrategyArgs = MAIN_STRATEGY_ARGS, 
                           fallbackStrategy = FALLBACK_STRATEGY, 
@@ -88,21 +88,21 @@ BTC_USDT = StockStartModel(      stockCode = "BTC",
                     takeProfitAtPercentage = TP_AT_PERCENTAGE, 
                 takeProfitAmountPercentage = TP_AMOUNT_PERCENTAGE)
 
-ETH_USDT = StockStartModel(      stockCode = "ETH",
-                             operationCode = "ETHUSDT",
-                            tradedQuantity = 0.012,
-                              mainStrategy = VORTEX_STRATEGY, 
-                          mainStrategyArgs = VORTEX_STRATEGY_ARGS, 
-                          fallbackStrategy = FALLBACK_STRATEGY, 
-                      fallbackStrategyArgs = FALLBACK_STRATEGY_ARGS,
-                              candlePeriod = CANDLE_PERIOD, 
-                        stopLossPercentage = STOP_LOSS_PERCENTAGE, 
-                          tempoEntreTrades = TEMPO_ENTRE_TRADES, 
-                          delayEntreOrdens = DELAY_ENTRE_ORDENS, 
-                  acceptableLossPercentage = ACCEPTABLE_LOSS_PERCENTAGE, 
-                         fallBackActivated = FALLBACK_ACTIVATED, 
-                    takeProfitAtPercentage = TP_AT_PERCENTAGE, 
-                takeProfitAmountPercentage = TP_AMOUNT_PERCENTAGE)
+# ETH_USDT = StockStartModel(      stockCode = "ETH",
+#                              operationCode = "ETHUSDT",
+#                             tradedQuantity = 0.012,
+#                               mainStrategy = VORTEX_STRATEGY, 
+#                           mainStrategyArgs = VORTEX_STRATEGY_ARGS, 
+#                           fallbackStrategy = FALLBACK_STRATEGY, 
+#                       fallbackStrategyArgs = FALLBACK_STRATEGY_ARGS,
+#                               candlePeriod = CANDLE_PERIOD, 
+#                         stopLossPercentage = STOP_LOSS_PERCENTAGE, 
+#                           tempoEntreTrades = TEMPO_ENTRE_TRADES, 
+#                           delayEntreOrdens = DELAY_ENTRE_ORDENS, 
+#                   acceptableLossPercentage = ACCEPTABLE_LOSS_PERCENTAGE, 
+#                          fallBackActivated = FALLBACK_ACTIVATED, 
+#                     takeProfitAtPercentage = TP_AT_PERCENTAGE, 
+#                takeProfitAmountPercentage = TP_AMOUNT_PERCENTAGE)
 
 # SOL_USDT = StockStartModel(      stockCode = "SOL",
 #                              operationCode = "SOLUSDT",
@@ -156,9 +156,8 @@ THREAD_LOCK = True
 
 # -----------------------------------------------------------------
 # CONFIGURAÇÕES - FIM
-# -----------------------------------------------------------------
 
-# 🔁 LOOP PRINCIPAL
+# LOOP PRINCIPAL
 
 thread_lock = threading.Lock()
 
