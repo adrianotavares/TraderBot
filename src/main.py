@@ -60,7 +60,7 @@ FALLBACK_STRATEGY_ARGS = {}
 
 # Ajustes de LOSS PROTECTION
 ACCEPTABLE_LOSS_PERCENTAGE = -1         # (Em base 100%) O quando o bot aceita perder de % (se for negativo, o bot só aceita lucro)
-STOP_LOSS_PERCENTAGE       = 3.5       # (Em base 100%) % Máxima de loss que ele aceita para vender à mercado independente
+STOP_LOSS_PERCENTAGE       = 0.5        # (Em base 100%) % Máxima de loss que ele aceita para vender à mercado independente
 
 # Ajustes de TAKE PROFIT (Em base 100%)                        
 TP_AT_PERCENTAGE     = [10, 25, 50]     # Em [X%, Y%]                       
@@ -68,8 +68,8 @@ TP_AMOUNT_PERCENTAGE = [50, 50, 100]   # Vende [A%, B%]
 
 # AJUSTES DE TEMPO
 CANDLE_PERIOD      = Client.KLINE_INTERVAL_15MINUTE    # Périodo do candle análisado
-TEMPO_ENTRE_TRADES = 15 * 60                           # Tempo que o bot espera para verificar o mercado (em segundos)
-DELAY_ENTRE_ORDENS = 30 * 60                           # Tempo que o bot espera depois de realizar uma ordem de compra ou venda (ajuda a diminuir trades de borda)
+TEMPO_ENTRE_TRADES = 5 * 60                           # Tempo que o bot espera para verificar o mercado (em segundos)
+DELAY_ENTRE_ORDENS = 5 * 60                           # Tempo que o bot espera depois de realizar uma ordem de compra ou venda (ajuda a diminuir trades de borda)
 
 # MOEDAS NEGOCIADAS
 BTC_USDT = StockStartModel(      stockCode = "BTC",
