@@ -1129,3 +1129,93 @@ Complete_order:
 {'symbol': 'BTCUSDT', 'orderId': 40353724348, 'orderListId': -1, 'clientOrderId': 'x-HNA2TXFJ45856bdbbd9aa35abbd74', 'transactTime': 1743625924873, 'price': '0.00000000', 'origQty': '0.00169000', 'executedQty': '0.00169000', 'origQuoteOrderQty': '0.00000000', 'cummulativeQuoteQty': '145.94130200', 'status': 'FILLED', 'timeInForce': 'GTC', 'type': 'MARKET', 'side': 'SELL', 'workingTime': 1743625924873, 'fills': [{'price': '86355.80000000', 'qty': '0.00169000', 'commission': '0.14594130', 'commissionAsset': 'USDT', 'tradeId': 4768533134}], 'selfTradePreventionMode': 'EXPIRE_MAKER'}
 -----------------------------------------
 
+2025-04-03 16:08:47,387 - INFO - 
+--------------------
+ORDEM ENVIADA: 
+Status: EXECUTADA
+Side: BUY
+Ativo: BTCUSDT
+Quantidade: 0.00169000
+Preço enviado: 82482.03000000
+Valor na compra: 82317.40000000
+Moeda: BTC
+Total em BTC: 139.11640600
+Type: LIMIT
+Data/Hora: (19:08:47) 2025-04-03
+
+Complete_order:
+{'symbol': 'BTCUSDT', 'orderId': 40427929578, 'orderListId': -1, 'clientOrderId': 'x-HNA2TXFJc936e2a4134e3db7be5190', 'transactTime': 1743707327246, 'price': '82482.03000000', 'origQty': '0.00169000', 'executedQty': '0.00169000', 'origQuoteOrderQty': '0.00000000', 'cummulativeQuoteQty': '139.11640600', 'status': 'FILLED', 'timeInForce': 'GTC', 'type': 'LIMIT', 'side': 'BUY', 'workingTime': 1743707327246, 'fills': [{'price': '82317.40000000', 'qty': '0.00169000', 'commission': '0.00000169', 'commissionAsset': 'BTC', 'tradeId': 4773252666}], 'selfTradePreventionMode': 'EXPIRE_MAKER'}
+-----------------------------------------
+
+2025-04-03 16:18:58,234 - INFO - 
+--------------------
+ORDEM ENVIADA: 
+Status: ABERTA
+Side: SELL
+Ativo: BTCUSDT
+Quantidade: 0.00000000
+Preço enviado: 83140.57000000
+Valor na venda: -
+Moeda: -
+Total em -: 0.00000000
+Type: LIMIT
+Data/Hora: (19:18:57) 2025-04-03
+
+Complete_order:
+{'symbol': 'BTCUSDT', 'orderId': 40428397529, 'orderListId': -1, 'clientOrderId': 'x-HNA2TXFJ5bb5f7ca11117dbc055b2e', 'transactTime': 1743707937990, 'price': '83140.57000000', 'origQty': '0.00168000', 'executedQty': '0.00000000', 'origQuoteOrderQty': '0.00000000', 'cummulativeQuoteQty': '0.00000000', 'status': 'NEW', 'timeInForce': 'GTC', 'type': 'LIMIT', 'side': 'SELL', 'workingTime': 1743707937990, 'fills': [], 'selfTradePreventionMode': 'EXPIRE_MAKER'}
+-----------------------------------------
+
+2025-04-03 16:24:09,819 - INFO - 
+--------------------
+ORDEM ENVIADA: 
+Status: ABERTA
+Side: SELL
+Ativo: BTCUSDT
+Quantidade: 0.00000000
+Preço enviado: 83140.57000000
+Valor na venda: -
+Moeda: -
+Total em -: 0.00000000
+Type: LIMIT
+Data/Hora: (19:24:09) 2025-04-03
+
+Complete_order:
+{'symbol': 'BTCUSDT', 'orderId': 40428666837, 'orderListId': -1, 'clientOrderId': 'x-HNA2TXFJ4f0b26c91d4a70b87ef7ec', 'transactTime': 1743708249627, 'price': '83140.57000000', 'origQty': '0.00168000', 'executedQty': '0.00000000', 'origQuoteOrderQty': '0.00000000', 'cummulativeQuoteQty': '0.00000000', 'status': 'NEW', 'timeInForce': 'GTC', 'type': 'LIMIT', 'side': 'SELL', 'workingTime': 1743708249627, 'fills': [], 'selfTradePreventionMode': 'EXPIRE_MAKER'}
+-----------------------------------------
+
+2025-04-03 16:25:41,877 - INFO - 
+--------------------
+ORDEM ENVIADA: 
+Status: ABERTA
+Side: SELL
+Ativo: BTCUSDT
+Quantidade: 0.00000000
+Preço enviado: 83140.57000000
+Valor na venda: -
+Moeda: -
+Total em -: 0.00000000
+Type: LIMIT
+Data/Hora: (19:25:41) 2025-04-03
+
+Complete_order:
+{'symbol': 'BTCUSDT', 'orderId': 40428748610, 'orderListId': -1, 'clientOrderId': 'x-HNA2TXFJ2956fe3f630081235a4b66', 'transactTime': 1743708341740, 'price': '83140.57000000', 'origQty': '0.00168000', 'executedQty': '0.00000000', 'origQuoteOrderQty': '0.00000000', 'cummulativeQuoteQty': '0.00000000', 'status': 'NEW', 'timeInForce': 'GTC', 'type': 'LIMIT', 'side': 'SELL', 'workingTime': 1743708341740, 'fills': [], 'selfTradePreventionMode': 'EXPIRE_MAKER'}
+-----------------------------------------
+
+2025-04-03 16:30:49,853 - INFO - 
+--------------------
+ORDEM ENVIADA: 
+Status: ABERTA
+Side: SELL
+Ativo: BTCUSDT
+Quantidade: 0.00000000
+Preço enviado: 83140.57000000
+Valor na venda: -
+Moeda: -
+Total em -: 0.00000000
+Type: LIMIT
+Data/Hora: (19:30:49) 2025-04-03
+
+Complete_order:
+{'symbol': 'BTCUSDT', 'orderId': 40429023695, 'orderListId': -1, 'clientOrderId': 'x-HNA2TXFJ6cb3d37c4ac0cc1787dd77', 'transactTime': 1743708649610, 'price': '83140.57000000', 'origQty': '0.00168000', 'executedQty': '0.00000000', 'origQuoteOrderQty': '0.00000000', 'cummulativeQuoteQty': '0.00000000', 'status': 'NEW', 'timeInForce': 'GTC', 'type': 'LIMIT', 'side': 'SELL', 'workingTime': 1743708649610, 'fills': [], 'selfTradePreventionMode': 'EXPIRE_MAKER'}
+-----------------------------------------
+
