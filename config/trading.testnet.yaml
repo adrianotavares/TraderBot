@@ -1,0 +1,44 @@
+# Testnet profile — copy or symlink to trading.yaml for local testnet runs.
+environment: testnet
+thread_lock: true
+
+strategy:
+  main: weapon_candle
+  main_args: {}
+  fallback: moving_average
+  fallback_args: {}
+  fallback_enabled: true
+
+risk:
+  acceptable_loss_pct: -1.0
+  stop_loss_pct: 0.5
+  take_profit:
+    - at: 10
+      amount: 50
+    - at: 25
+      amount: 50
+    - at: 50
+      amount: 100
+  max_daily_loss_usdt: 100.0
+  max_trades_per_day: 50
+  max_open_orders: 5
+
+timing:
+  candle_period: 15m
+  tempo_entre_trades: 300
+  delay_entre_ordens: 300
+
+assets:
+  - stock_code: BTC
+    operation_code: BTCUSDT
+    traded_quantity: 0.001
+    traded_percentage: 100
+
+operation:
+  cancel_orders_on_shutdown: false
+  circuit_breaker_errors: 5
+  circuit_breaker_pause_seconds: 300
+
+alerts:
+  enabled: false
+  webhook_url: ""

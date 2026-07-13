@@ -1,3 +1,4 @@
+from config.settings import load_settings
 from modules.BinanceTraderBot import BinanceTraderBot
 from binance.client import Client
 from tests.backtestRunner import backtestRunner
@@ -8,21 +9,13 @@ from strategies.rsi_strategy import getRsiTradeStrategy
 from strategies.vortex_strategy import getVortexTradeStrategy
 from strategies.ma_rsi_volume_strategy import getMovingAverageRSIVolumeStrategy
 
-# ------------------------------------------------------------------------
-# 🔎 AJUSTES BACKTESTS 🔎
+settings, env = load_settings()
+asset = settings.assets[0]
 
-# STOCK_CODE      = "SOL"     # Código da Criptomoeda
-# OPERATION_CODE  = "SOLUSDT" # Código da operação (cripto + moeda)
-# INITIAL_BALANCE = 25        # Valor de investimento inicial em USDT ou BRL
-
-STOCK_CODE      = "BTC"     # Código da Criptomoeda
-OPERATION_CODE  = "BTCUSDT" # Código da operação (cripto + moeda)
-INITIAL_BALANCE = 0.00025   # Valor de investimento inicial em USDT ou BRL
-
-# ----------------------------------------
-# 📊 PERÍODO DO CANDLE, SELECIONAR 1 📊
-
-CANDLE_PERIOD     = Client.KLINE_INTERVAL_4HOUR
+STOCK_CODE = asset.stock_code
+OPERATION_CODE = asset.operation_code
+INITIAL_BALANCE = asset.traded_quantity or 0.00025
+CANDLE_PERIOD = settings.timing.candle_interval()
 CLANDES_RODADOS   = 7 * 24
 VOLATILITY_FACTOR = 0.5
 FAST_WINDOW       = 7
@@ -32,12 +25,14 @@ SLOW_WINDOW       = 30
 # ⏬ SELEÇÃO DE ESTRATÉGIAS ⏬
 
 devTrader = BinanceTraderBot(
-    stock_code        = STOCK_CODE,
-    operation_code    = OPERATION_CODE,
-    traded_quantity   = 0,
-    traded_percentage = 100,
-    candle_period     = CANDLE_PERIOD,
-    # volatility_factor=VOLATILITY_FACTOR,
+    stock_code=STOCK_CODE,
+    operation_code=OPERATION_CODE,
+    traded_quantity=0,
+    traded_percentage=100,
+    candle_period=CANDLE_PERIOD,
+    api_key=env.api_key,
+    secret_key=env.secret_key,
+    testnet=settings.environment == "testnet",
 )
 
 

@@ -1,104 +1,133 @@
 # TraderBot
 ### Robô de Negociação Automatizada para Binance
 
-TraderBot é um robô de negociação automatizada desenvolvido em Python, projetado para interagir com a API da Binance. Ele permite que você automatize suas operações de compra e venda de criptomoedas, implementando estratégias de negociação personalizadas. Este projeto foi criado com o objetivo principal de aprendizado e para auxiliar traders a automatizar suas estratégias e realizar backtests eficazes.
+TraderBot é um robô de negociação automatizada desenvolvido em Python para operar na Binance Spot com configuração versionada, dashboard web, persistência de estado, guardrails de risco e suporte a testnet.
 
 ## Funcionalidades
 
-*   **Negociação Automatizada:** Execute ordens de compra e venda automaticamente com base em regras predefinidas.
-*   **Estratégias Personalizadas:** Implemente e teste suas próprias estratégias de negociação.
-*   **Backtesting:** Simule o desempenho de suas estratégias usando dados históricos da Binance.
-*   **Integração com a API da Binance:** Conecte-se à sua conta Binance através da API para negociação em tempo real.
+* **Negociação automatizada** com estratégias plugáveis e fallback
+* **Configuração unificada** via `config/trading.yaml` + dashboard Flask
+* **Testnet e mainnet** controlados por `TRADING_ENV`
+* **Persistência de estado** em SQLite (`data/traderbot.db`)
+* **Guardrails de risco**: min notional, limites diários, circuit breaker
+* **Backtesting** com taxas e slippage estimados
+* **Logs estruturados** em JSON com rotação automática
 
 ## Pré-requisitos
 
-*   Python 3.6 ou superior instalado.
-*   Conta na Binance com chaves de API habilitadas (crie em [Binance](https://www.binance.com/)).
+* Python 3.10+
+* Conta Binance com API Spot habilitada
+* Para testes iniciais: [Binance Spot Testnet](https://testnet.binance.vision/)
 
 ## Instalação
 
-1.  **Clone o repositório:**
-
-    ```bash
-    git clone <URL_DO_SEU_REPOSITÓRIO>
-    cd TraderBot
-    ```
-
-2.  **Instale as dependências:**
-
-    Abra o terminal (geralmente com `Ctrl+J` no VSCode) e execute o seguinte comando:
-
-    ```bash
-    pip install -r requirements.txt
-    ```
+```bash
+git clone <URL_DO_SEU_REPOSITÓRIO>
+cd TraderBot
+pip install -r requirements.txt
+```
 
 ## Configuração
 
-1.  **Chaves da API Binance:**
+### 1. Variáveis de ambiente (`.env`)
 
-    *   Crie um arquivo chamado `.env` na raiz do projeto.
-    *   Adicione suas chaves da API Binance ao arquivo `.env` no seguinte formato:
+Copie `.env.example` para `.env`:
 
-        ```python
-        BINANCE_API_KEY="SUA_API_KEY"
-        BINANCE_SECRET_KEY="SUA_SECRET_KEY"
-        ```
+```bash
+BINANCE_API_KEY="sua_api_key"
+BINANCE_SECRET_KEY="sua_secret_key"
+TRADING_ENV=testnet
+LOG_LEVEL=INFO
+TRADING_CONFIG=config/trading.yaml
+```
 
-        **IMPORTANTE:** Certifique-se de colocar as chaves entre aspas duplas.  Nunca compartilhe suas chaves secretas com ninguém.
-        
-        **AVISO:**  Armazenar chaves de API em arquivos `.env` é prático para desenvolvimento local, mas considere alternativas mais seguras (como variáveis de ambiente do sistema) para ambientes de produção.
+### 2. Configuração de trading (`config/trading.yaml`)
 
-2.  **Configuração do Interpretador Python no VSCode (Opcional):**
+Edite ativos, estratégias, risco e tempos. Exemplo:
 
-    Se você estiver usando o VSCode, siga estas etapas para garantir que o interpretador correto seja selecionado:
+```yaml
+environment: testnet
+strategy:
+  main: weapon_candle
+  fallback: moving_average
+  fallback_enabled: true
+assets:
+  - stock_code: BTC
+    operation_code: BTCUSDT
+    traded_quantity: 0.001
+risk:
+  stop_loss_pct: 0.5
+  max_daily_loss_usdt: 100
+```
 
-    *   Pressione `Ctrl + Shift + P` para abrir a paleta de comandos.
-    *   Digite "Python: Selecionar Interpretador" e pressione Enter.
-    *   Escolha o interpretador Python correto (geralmente sua instalação base ou um ambiente Conda).
-    *   (Opcional) Se tiver problemas, reinicie o terminal integrado do VSCode clicando no ícone da lixeira e abrindo-o novamente.
+Estratégias disponíveis: `weapon_candle`, `moving_average`, `moving_average_antecipation`, `vortex`, `rsi`, `ma_rsi_volume`, `ut_bot_alerts`.
 
-3.  **Configuração do Bot:**
+### 3. Dashboard web (opcional)
 
-    A lógica principal de configuração do bot está localizada no arquivo `src/main.py`.  Edite este arquivo para personalizar as configurações da sua estratégia de negociação, como:
+```bash
+PYTHONPATH=src python src/app/app.py
+```
 
-    *   Pares de criptomoedas para negociar (ex: `BTCUSDT`, `ETHBTC`)
-    *   Valor/quantidade a ser negociado por ordem.
-    *   Indicadores técnicos e regras de entrada/saída.
+Acesse `http://localhost:5000`. Alterações no dashboard gravam em `config/trading.yaml`. **Reinicie o bot** após salvar.
 
 ## Execução
 
-1.  **Rodar o Bot:**
+```bash
+./run.sh
+# ou
+PYTHONPATH=src python src/main.py
+```
 
-    Para iniciar o bot de negociação, execute o seguinte comando no terminal:
+### Docker
 
-    ```bash
-    python src/main.py
-    ```
+```bash
+docker compose up -d
+```
 
-2.  **Rodar os Backtests:**
+Serviços: `bot` (trading loop) e `dashboard` (porta 5000).
 
-    Para executar simulações de backtesting com seus dados históricos, execute o seguinte comando:
+### Backtests
 
-    ```bash
-    python src/backtests.py
-    ```
+```bash
+PYTHONPATH=src python src/backtests.py
+```
 
-## Termos de Uso e Isenção de Responsabilidade
+## Testes
 
-Este robô/código é fornecido "como está" e para fins educacionais. O uso é de sua total responsabilidade. Os desenvolvedores não se responsabilizam por quaisquer perdas financeiras ou outros danos decorrentes do uso deste código.
+```bash
+PYTHONPATH=src pytest tests/ -q
+```
 
-**Negocie com responsabilidade e esteja ciente dos riscos envolvidos na negociação de criptomoedas.**
+## Checklist: Testnet → Mainnet
 
-Ao usar este código, você concorda com os termos da licença [GNU Affero General Public License](./LICENSE).
+1. Criar chaves na **Binance Spot Testnet** (não reutilizar chaves de produção)
+2. Definir `TRADING_ENV=testnet` no `.env`
+3. Validar `config/trading.yaml` com quantidades pequenas
+4. Rodar o bot por **48–72 horas** na testnet e revisar logs em `src/logs/`
+5. Confirmar reconciliação de estado após restart (`data/traderbot.db`)
+6. Verificar stop loss, take profit e bloqueios de risco nos logs JSON
+7. Rodar `pytest tests/` sem falhas
+8. Trocar para chaves **mainnet** e `TRADING_ENV=mainnet`
+9. Reduzir exposição inicial e monitorar o primeiro dia manualmente
+
+## Arquitetura
+
+```
+src/main.py → BinanceTraderBot (facade) → TradingEngine
+                ├── MarketDataService
+                ├── OrderExecutor
+                ├── RiskManager
+                ├── StrategyRunner
+                └── StateStore (SQLite)
+```
+
+## Termos de Uso
+
+Este robô é fornecido "como está". O uso é de sua total responsabilidade. Negocie com responsabilidade.
+
+Licença: [GNU Affero General Public License](./LICENSE).
 
 ## Autores
 
-*   Desenvolvido inicialmente por Gabriel Freitas.
-    *   [YouTube](https://www.youtube.com/@DescolaDev)
-    *   [Instagram](https://instagram.com/gabrielfreitas.dev)
-    *   [Discord](https://discord.gg/PpmB3DwSSX)
-*   Fork realizado em 05/02/2025 por Adriano Tavares.
-
-## Contribuição
-
-Contribuições são bem-vindas! Sinta-se à vontade para abrir issues ou enviar pull requests para melhorar o TraderBot.
+* Desenvolvido inicialmente por Gabriel Freitas
+* Fork em 05/02/2025 por Adriano Tavares

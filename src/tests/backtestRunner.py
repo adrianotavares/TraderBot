@@ -1,85 +1,86 @@
 import numpy as np
 import pandas as pd
 
+DEFAULT_FEE_RATE = 0.001  # 0.1% Binance spot fee
+DEFAULT_SLIPPAGE = 0.0005  # 0.05%
+
 
 def backtestRunner(
-    stock_data: pd.DataFrame, strategy_function, strategy_instance=None, periods=900, initial_balance=1000, **strategy_kwargs
+    stock_data: pd.DataFrame,
+    strategy_function,
+    strategy_instance=None,
+    periods=900,
+    initial_balance=1000,
+    fee_rate=DEFAULT_FEE_RATE,
+    slippage=DEFAULT_SLIPPAGE,
+    **strategy_kwargs,
 ):
     """
     Executa um backtest de qualquer estratégia que segue a lógica de:
     - True = comprado
     - False = vendido
 
-    O bot verifica se já está comprado/vendido e só age no primeiro sinal.
-
-    :param stock_data: DataFrame contendo os dados do ativo.
-    :param strategy_function: Função da estratégia de trading (ex: utBotAlerts, getMovingAverageTradeStrategy).
-    :param strategy_instance: Instância da classe (ex: devTrader) para estratégias que exigem 'self'.
-    :param periods: Número de períodos a serem analisados no backtest.
-    :param initial_balance: Saldo inicial da conta de trading.
-    :param strategy_kwargs: Parâmetros adicionais para a estratégia.
-    :return: Exibe estatísticas do backtest.
+    Inclui taxas e slippage básicos para aproximar operação real.
     """
-    # 🔹 Ajuste para garantir que há dados suficientes para calcular médias móveis corretamente
-    min_required_periods = strategy_kwargs.get("slow_window", 40) + 20  # Adicionamos um buffer extra
+    min_required_periods = strategy_kwargs.get("slow_window", 40) + 20
     stock_data = stock_data[-max(periods, min_required_periods) :].copy().reset_index(drop=True)
-
-    # 🔹 REMOVE LINHAS INICIAIS COM NaN PARA EVITAR PROBLEMAS
     stock_data.dropna(inplace=True)
 
-    # Inicializa variáveis do backtest
-    balance = initial_balance  # Saldo inicial
-    position = 0  # 1 = comprado, -1 = vendido, 0 = sem posição
-    entry_price = 0  # Preço de entrada na operação
-    last_signal = None  # Guarda o último tipo de sinal para evitar compras/vendas consecutivas
-    trades = 0  # Contador de operações
+    balance = initial_balance
+    position = 0
+    entry_price = 0
+    last_signal = None
+    trades = 0
+    total_fees = 0.0
 
-    print(f"📊 Iniciando backtest da estratégia: {strategy_function.__name__}")
-    print(f"🔹 Balanço inicial: ${balance:.2f}")
+    print(f"Iniciando backtest da estratégia: {strategy_function.__name__}")
+    print(f"Balanço inicial: ${balance:.2f}")
 
-    # Loop sobre cada período no dataset
     for i in range(1, len(stock_data)):
         current_data = stock_data.iloc[: i + 1]
 
-        # Se a função precisa de um objeto (ex: `self`), passamos a instância do bot
         if strategy_instance:
             signal = strategy_function(strategy_instance)
         else:
             signal = strategy_function(current_data, **strategy_kwargs)
 
-        # Se o sinal for `None`, pulamos para evitar erros
         if signal is None:
             continue
 
         close_price = stock_data.iloc[i]["close_price"]
 
-        # Compra apenas no primeiro sinal de compra e se não estiver comprado
         if signal and position == 0 and last_signal != "buy":
+            fill_price = close_price * (1 + slippage)
+            fee = balance * fee_rate
+            balance -= fee
+            total_fees += fee
             position = 1
-            entry_price = close_price
+            entry_price = fill_price
             last_signal = "buy"
             trades += 1
 
-        # Venda apenas no primeiro sinal de venda e se estiver comprado
         elif not signal and position == 1 and last_signal != "sell":
+            fill_price = close_price * (1 - slippage)
+            gross_profit = ((fill_price - entry_price) / entry_price) * balance
+            fee = (balance + gross_profit) * fee_rate
+            balance += gross_profit - fee
+            total_fees += fee
             position = 0
-            profit = ((close_price - entry_price) / entry_price) * balance
-            balance += profit
             last_signal = "sell"
             trades += 1
 
-    # Fechar posição final
     if position == 1:
-        final_price = stock_data.iloc[-1]["close_price"]
-        profit = ((final_price - entry_price) / entry_price) * balance
-        balance += profit
+        final_price = stock_data.iloc[-1]["close_price"] * (1 - slippage)
+        gross_profit = ((final_price - entry_price) / entry_price) * balance
+        fee = (balance + gross_profit) * fee_rate
+        balance += gross_profit - fee
+        total_fees += fee
 
-    # 🔹 Agora calculamos `profit_percentage` antes do `print()`
     profit_percentage = ((balance - initial_balance) / initial_balance) * 100
 
-    # Resultados
-    print(f"🔹 Balanço final: ${balance:.2f}")
-    print(f"📈 Lucro/prejuízo percentual: {profit_percentage:.2f}%")
-    print(f"📊 Total de operações realizadas: {trades}")
+    print(f"Balanço final: ${balance:.2f}")
+    print(f"Lucro/prejuízo percentual: {profit_percentage:.2f}%")
+    print(f"Total de operações realizadas: {trades}")
+    print(f"Taxas estimadas: ${total_fees:.4f}")
 
     return profit_percentage

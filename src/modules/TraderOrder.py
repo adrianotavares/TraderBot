@@ -38,7 +38,7 @@ class TraderOrder:
                     quantity=_quantity,
                     price=round(_limit_price, 2),
                 )
-            elif _limit_price is not None and _stop_price is None:
+            elif _limit_price is not None and _stop_price is not None:
                 ordemExecute = 3
                 order_buy = client_binance.create_order(
                     symbol=_symbol,
@@ -46,8 +46,8 @@ class TraderOrder:
                     type=_type,
                     timeInForce=_timeInForce,
                     quantity=_quantity,
-                    price=round(_limit_price, 2),  # Preço limite ajustado
-                    stopPrice=round(_stop_price, 2),  # Preço de disparo ajustado
+                    price=round(_limit_price, 2),
+                    stopPrice=round(_stop_price, 2),
                 )
         except Exception as e:
             print(

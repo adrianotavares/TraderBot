@@ -1,9 +1,12 @@
+import time
+
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
-import time
 
 
 class BinanceClient(Client):
+    RETRYABLE_CODES = {-1003, -1006, -1007, -1021, -1099}
+
     def __init__(
         self,
         api_key=None,
@@ -17,11 +20,10 @@ class BinanceClient(Client):
         sync=True,
         ping=True,
         verbose=False,
-        sync_interval=60000,  # Intervalo de ressincronização em ms
+        sync_interval=60000,
+        max_retries=3,
+        retry_backoff=1.0,
     ):
-        """
-        Inicializa o cliente Binance customizado, integrando a sincronização do timestamp com o atributo `timestamp_offset`.
-        """
         super().__init__(
             api_key=api_key,
             api_secret=api_secret,
@@ -33,24 +35,21 @@ class BinanceClient(Client):
             private_key_pass=private_key_pass,
         )
 
-        # Configurações de sincronização
         self.sync = sync
         self.verbose = verbose
         self.sync_interval = sync_interval
-        self.last_sync_time = 0  # Armazena o tempo da última sincronização
+        self.last_sync_time = 0
+        self.max_retries = max_retries
+        self.retry_backoff = retry_backoff
+        self.testnet = testnet
 
         if self.sync:
             self.sync_time_offset()
 
-        # Executa o ping inicial se solicitado
         if ping:
             self.ping()
 
     def sync_time_offset(self, force=False):
-        """
-        Sincroniza o desvio de tempo (`timestamp_offset`) com base no relógio local e no servidor Binance.
-        Realiza a sincronização apenas se for forçada ou se o intervalo configurado tiver passado.
-        """
         current_time = int(time.time() * 1000)
         if force or (current_time - self.last_sync_time >= self.sync_interval):
             try:
@@ -59,17 +58,13 @@ class BinanceClient(Client):
                 self.timestamp_offset = server_time - local_time
                 self.last_sync_time = current_time
                 if self.verbose:
-                    print(f"⏰ Desvio de tempo sincronizado: {self.timestamp_offset}ms")
+                    print(f"Time offset synced: {self.timestamp_offset}ms")
             except Exception as e:
-                print(f"⚠️ Erro ao sincronizar o desvio de tempo: {e}")
+                print(f"Failed to sync time offset: {e}")
                 self.timestamp_offset = 0
 
     def _request(self, method, uri: str, signed: bool, force_params: bool = False, **kwargs):
-        """
-        Sobrescreve o método `_request` para integrar a sincronização automática do `timestamp_offset` em requisições assinadas.
-        """
         if signed:
-            # Atualiza o timestamp para requisições assinadas
             current_time = int(time.time() * 1000)
             if self.sync and (self.timestamp_offset is None or abs(self.timestamp_offset) > 1000):
                 self.sync_time_offset(force=True)
@@ -79,14 +74,24 @@ class BinanceClient(Client):
             kwargs.setdefault("data", {})
             kwargs["data"]["timestamp"] = int(time.time() * 1000 + self.timestamp_offset)
 
-        try:
-            return super()._request(method, uri, signed, force_params, **kwargs)
-        except BinanceAPIException as e:
-            if e.code == -1021:  # Erro de timestamp
-                print(f"⚠️ Erro de timestamp detectado: {e}. Re-sincronizando...")
-                self.sync_time_offset(force=True)
-                if signed:
-                    kwargs["data"]["timestamp"] = int(time.time() * 1000 + self.timestamp_offset)
+        attempt = 0
+        while True:
+            try:
                 return super()._request(method, uri, signed, force_params, **kwargs)
-            else:
-                raise e
+            except BinanceAPIException as e:
+                if e.code == -1021:
+                    self.sync_time_offset(force=True)
+                    if signed:
+                        kwargs["data"]["timestamp"] = int(
+                            time.time() * 1000 + self.timestamp_offset
+                        )
+                    attempt += 1
+                    if attempt > self.max_retries:
+                        raise
+                    time.sleep(self.retry_backoff * attempt)
+                    continue
+                if e.code in self.RETRYABLE_CODES and attempt < self.max_retries:
+                    attempt += 1
+                    time.sleep(self.retry_backoff * attempt)
+                    continue
+                raise

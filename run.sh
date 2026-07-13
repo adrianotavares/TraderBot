@@ -1,9 +1,9 @@
-clear
+#!/usr/bin/env bash
+set -euo pipefail
 
-export CERT_PATH=/Users/Shared/aws_crt/Zscaler_root.crt
-export CERT_DIR=/Users/Shared/aws_crt/
-export SSL_CERT_FILE=${CERT_PATH}
-export SSL_CERT_DIR=${CERT_DIR}
-export REQUESTS_CA_BUNDLE=${CERT_PATH}
+cd "$(dirname "$0")"
+
+export PYTHONPATH="${PYTHONPATH:-}:$(pwd)/src"
+export TRADING_CONFIG="${TRADING_CONFIG:-config/trading.yaml}"
 
 python3 src/main.py

@@ -1,4 +1,8 @@
-pandas
-python-binance
-python-dotenv
-flask
+pandas==2.2.3
+python-binance==1.0.28
+python-dotenv==1.0.1
+flask==3.1.0
+pydantic==2.10.4
+PyYAML==6.0.2
+pytest==8.3.4
+requests==2.32.3

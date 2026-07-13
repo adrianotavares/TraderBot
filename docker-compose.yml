@@ -1,0 +1,19 @@
+services:
+  bot:
+    build: .
+    env_file: .env
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./src/logs:/app/src/logs
+    restart: unless-stopped
+
+  dashboard:
+    build: .
+    command: ["python", "src/app/app.py"]
+    env_file: .env
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./config:/app/config
+    restart: unless-stopped
