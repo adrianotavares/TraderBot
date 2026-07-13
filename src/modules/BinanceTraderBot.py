@@ -26,9 +26,59 @@ from indicators import Indicators
 # fmt: on
 
 
-load_dotenv()
+_ENV_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
+load_dotenv(_ENV_PATH)
 api_key = os.getenv("BINANCE_API_KEY")
 secret_key = os.getenv("BINANCE_SECRET_KEY")
+
+
+def _validate_api_keys():
+    missing = []
+    if not api_key:
+        missing.append("BINANCE_API_KEY")
+    if not secret_key:
+        missing.append("BINANCE_SECRET_KEY")
+    if missing:
+        raise ValueError(
+            "Missing Binance API credentials: "
+            + ", ".join(missing)
+            + ". Create a .env file in the project root with BINANCE_API_KEY and "
+            + "BINANCE_SECRET_KEY. See README.md for setup instructions."
+        )
+
+
+def _validate_trading_permissions(client):
+    """Ensure the API key can place spot orders before the trading loop starts."""
+    try:
+        permissions = client.get_account_api_permissions()
+    except BinanceAPIException as e:
+        if e.code == -2008:
+            raise ValueError(
+                "Invalid Binance API key (code -2008). Verify BINANCE_API_KEY in "
+                ".env matches the key shown in Binance API Management, that the key "
+                "was not deleted, and that you are using mainnet keys (not testnet)."
+            ) from e
+        if e.code == -2015:
+            raise ValueError(
+                "Binance API key rejected for trading actions (code -2015). "
+                "Check that 'Enable Spot & Margin Trading' is active, the key is "
+                "not restricted to another network (mainnet vs testnet), and your "
+                "current IP is whitelisted if IP restriction is enabled."
+            ) from e
+        raise
+
+    if not permissions.get("enableSpotAndMarginTrading"):
+        raise ValueError(
+            "API key has read access but Spot Trading is disabled. "
+            "In Binance → API Management, edit the key and enable "
+            "'Enable Spot & Margin Trading', then restart the bot."
+        )
+
+    if permissions.get("ipRestrict"):
+        logging.warning(
+            "API key has IP restriction enabled. Ensure this machine's IP "
+            "is whitelisted in Binance API Management."
+        )
 
 
 # ------------------------------------------------------------------
@@ -100,9 +150,11 @@ class BinanceTraderBot:
         self.delay_after_order = delay_after_order
         self.time_to_sleep = time_to_trade
 
+        _validate_api_keys()
         self.client_binance = BinanceClient(
             api_key, secret_key, sync=True, sync_interval=30000, verbose=False
         )  # Inicia o client da Binance
+        _validate_trading_permissions(self.client_binance)
 
         self.setStepSizeAndTickSize() # Seta o time_step e step_size da classe (só precisa executar 1x)
 

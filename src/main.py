@@ -2,6 +2,7 @@ import threading
 import time
 import logging
 import asyncio
+from modules.logging_setup import setup_logging
 from modules.BinanceTraderBot import BinanceTraderBot
 from binance.client import Client
 from Models.StockStartModel import StockStartModel
@@ -13,11 +14,7 @@ from strategies.rsi_strategy import getRsiTradeStrategy
 from strategies.weapon_candle_trade_strategy import getWeaponCandleTradeStrategy
 
 # Define o logger
-logging.basicConfig(
-    filename="src/logs/trading_bot.log",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
+setup_logging()
 
 # fmt: off
 # -----------------------------------------------------------------

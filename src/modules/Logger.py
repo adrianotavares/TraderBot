@@ -1,12 +1,9 @@
 import logging
 from datetime import datetime
 
-# Configurar o logger
-logging.basicConfig(
-    filename='src/logs/trading_bot.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+from modules.logging_setup import setup_logging
+
+setup_logging()
 
 # Printa e cria um log de ordem de compra ou venda.
 # a partir do objeto retornado pela API da Binance

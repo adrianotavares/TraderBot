@@ -29,7 +29,7 @@ TraderBot é um robô de negociação automatizada desenvolvido em Python, proje
     Abra o terminal (geralmente com `Ctrl+J` no VSCode) e execute o seguinte comando:
 
     ```bash
-    pip install pandas python-binance python-dotenv
+    pip install -r requirements.txt
     ```
 
 ## Configuração

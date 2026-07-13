@@ -10,7 +10,9 @@ sys.path.append(SRC_PATH)
 import threading
 import time
 import json
-import logging
+
+from modules.logging_setup import setup_logging
+setup_logging()
 
 from binance.client import Client
 from Models.StockStartModel import StockStartModel
@@ -20,12 +22,7 @@ from strategies.moving_average import getMovingAverageTradeStrategy
 from strategies.vortex_strategy import getVortexTradeStrategy
 
 
-# Configuração de logging
-logging.basicConfig(
-    filename="src/logs/trading_bot.log",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
+# Configuração de logging (setup_logging chamado acima)
 
 # Carregar configurações do JSON
 with open("src/app/config.json", "r") as f:

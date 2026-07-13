@@ -24,6 +24,9 @@
                     <option value="getMovingAverageTradeStrategy">
                         Média Móvel
                     </option>
+                    <option value="getMovingAverageAntecipationTradeStrategy">
+                        Média Móvel Antecipação
+                    </option>
                 </select>
             </div>
 
@@ -125,15 +128,15 @@
                 stocksContainer.innerHTML = "";
                 data.stocks_traded_list.forEach((stock, index) => {
                     stocksContainer.innerHTML += `
-                        <div class="mb-3">
+                        <div class="mb-3 stock-row">
                             <label class="form-label">Moeda ${index + 1}</label>
-                            <input type="text" class="form-control" name="stocks_traded_list[${index}][stockCode]" value="${
+                            <input type="text" class="form-control stock-code" value="${
                         stock.stockCode
                     }">
-                            <input type="text" class="form-control mt-2" name="stocks_traded_list[${index}][operationCode]" value="${
+                            <input type="text" class="form-control mt-2 stock-operation" value="${
                         stock.operationCode
                     }">
-                            <input type="number" class="form-control mt-2" name="stocks_traded_list[${index}][tradedQuantity]" value="${
+                            <input type="number" class="form-control mt-2 stock-quantity" step="any" value="${
                         stock.tradedQuantity
                     }">
                         </div>
@@ -141,35 +144,57 @@
                 });
             }
 
+            function buildStocksTradedList() {
+                const stocks = [];
+                document.querySelectorAll("#stocks-container .stock-row").forEach((row) => {
+                    stocks.push({
+                        stockCode: row.querySelector(".stock-code").value.trim(),
+                        operationCode: row.querySelector(".stock-operation").value.trim(),
+                        tradedQuantity: parseFloat(
+                            row.querySelector(".stock-quantity").value
+                        ),
+                    });
+                });
+                return stocks;
+            }
+
             document.getElementById("config-form").onsubmit = async function (
                 e
             ) {
                 e.preventDefault();
 
-                let formData = new FormData(e.target);
-                let jsonData = Object.fromEntries(formData.entries());
+                const jsonData = {
+                    MAIN_STRATEGY: document.getElementById("MAIN_STRATEGY").value,
+                    FALLBACK_ACTIVATED:
+                        document.getElementById("FALLBACK_ACTIVATED").value === "true",
+                    ACCEPTABLE_LOSS_PERCENTAGE: parseFloat(
+                        document.getElementById("ACCEPTABLE_LOSS_PERCENTAGE").value
+                    ),
+                    STOP_LOSS_PERCENTAGE: parseFloat(
+                        document.getElementById("STOP_LOSS_PERCENTAGE").value
+                    ),
+                    TEMPO_ENTRE_TRADES: parseInt(
+                        document.getElementById("TEMPO_ENTRE_TRADES").value,
+                        10
+                    ),
+                    DELAY_ENTRE_ORDENS: parseInt(
+                        document.getElementById("DELAY_ENTRE_ORDENS").value,
+                        10
+                    ),
+                    stocks_traded_list: buildStocksTradedList(),
+                };
 
-                // Conversão de valores de string para número/boolean
-                jsonData.ACCEPTABLE_LOSS_PERCENTAGE = parseFloat(
-                    jsonData.ACCEPTABLE_LOSS_PERCENTAGE
-                );
-                jsonData.STOP_LOSS_PERCENTAGE = parseFloat(
-                    jsonData.STOP_LOSS_PERCENTAGE
-                );
-                jsonData.TEMPO_ENTRE_TRADES = parseInt(
-                    jsonData.TEMPO_ENTRE_TRADES
-                );
-                jsonData.DELAY_ENTRE_ORDENS = parseInt(
-                    jsonData.DELAY_ENTRE_ORDENS
-                );
-                jsonData.FALLBACK_ACTIVATED =
-                    jsonData.FALLBACK_ACTIVATED === "true";
-
-                await fetch("/update-config", {
+                const response = await fetch("/update-config", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(jsonData),
                 });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(error.error || "Erro ao salvar configuração.");
+                    return;
+                }
 
                 alert("Configuração salva!");
                 carregarConfiguracao();

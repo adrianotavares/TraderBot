@@ -1219,3 +1219,24 @@ Complete_order:
 {'symbol': 'BTCUSDT', 'orderId': 40429023695, 'orderListId': -1, 'clientOrderId': 'x-HNA2TXFJ6cb3d37c4ac0cc1787dd77', 'transactTime': 1743708649610, 'price': '83140.57000000', 'origQty': '0.00168000', 'executedQty': '0.00000000', 'origQuoteOrderQty': '0.00000000', 'cummulativeQuoteQty': '0.00000000', 'status': 'NEW', 'timeInForce': 'GTC', 'type': 'LIMIT', 'side': 'SELL', 'workingTime': 1743708649610, 'fills': [], 'selfTradePreventionMode': 'EXPIRE_MAKER'}
 -----------------------------------------
 
+2026-07-13 15:12:55,442 - ERROR - Erro ao executar ordem de venda a mercado: APIError(code=-2015): Invalid API-key, IP, or permissions for action.
+2026-07-13 15:13:10,380 - ERROR - Erro ao executar ordem de venda a mercado: APIError(code=-2015): Invalid API-key, IP, or permissions for action.
+2026-07-13 15:13:25,943 - ERROR - Erro ao executar ordem de venda a mercado: APIError(code=-2015): Invalid API-key, IP, or permissions for action.
+2026-07-13 15:29:09,618 - INFO - 
+--------------------
+ORDEM ENVIADA: 
+Status: EXECUTADA
+Side: SELL
+Ativo: BTCUSDT
+Quantidade: 0.00020000
+Preço enviado: 0.00000000
+Valor na venda: 61931.14000000
+Moeda: USDT
+Total em USDT: 12.38622800
+Type: MARKET
+Data/Hora: (18:29:09) 2026-07-13
+
+Complete_order:
+{'symbol': 'BTCUSDT', 'orderId': 64487661897, 'orderListId': -1, 'clientOrderId': 'x-HNA2TXFJ8a2fd0b318035a8353e414', 'transactTime': 1783967349421, 'price': '0.00000000', 'origQty': '0.00020000', 'executedQty': '0.00020000', 'origQuoteOrderQty': '0.00000000', 'cummulativeQuoteQty': '12.38622800', 'status': 'FILLED', 'timeInForce': 'GTC', 'type': 'MARKET', 'side': 'SELL', 'workingTime': 1783967349421, 'fills': [{'price': '61931.14000000', 'qty': '0.00020000', 'commission': '0.01238623', 'commissionAsset': 'USDT', 'tradeId': 6502974310}], 'selfTradePreventionMode': 'EXPIRE_MAKER'}
+-----------------------------------------
+
