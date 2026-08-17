@@ -4,6 +4,7 @@
 # Runtime data
 data/
 src/logs/
+.tools/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
