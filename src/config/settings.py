@@ -42,6 +42,7 @@ class AssetConfig(BaseModel):
     operation_code: str
     traded_quantity: float = 0.0
     traded_percentage: float = 100.0
+    breakout_price: float = 0.0
 
     @field_validator("stock_code", "operation_code")
     @classmethod
@@ -67,6 +68,7 @@ class RiskConfig(BaseModel):
     max_daily_loss_usdt: float = 100.0
     max_trades_per_day: int = 50
     max_open_orders: int = 5
+    max_grid_trades_per_day: int = 20
 
 
 class TimingConfig(BaseModel):
@@ -110,7 +112,29 @@ class RegimeConfig(BaseModel):
     touch_tolerance_pct: float = 0.3
     min_lateral_signals: int = 3
     min_candles: int = 60
-    action_in_lateral: Literal["pause"] = "pause"
+    action_in_lateral: Literal["pause", "grid"] = "pause"
+
+
+class GridConfig(BaseModel):
+    enabled: bool = True
+    levels: int = 6
+    capital_pct: float = 30.0
+    min_channel_width_pct: float = 1.5
+    max_channel_width_pct: float = 8.0
+    min_profit_per_level_pct: float = 0.35
+    max_open_orders: int = 10
+
+
+class BreakoutConfig(BaseModel):
+    enabled: bool = True
+    adx_period: int = 14
+    adx_min: float = 25.0
+    adx_rising_bars: int = 2
+    volume_multiplier: float = 1.5
+    volume_sma_period: int = 20
+    require_bullish_candle: bool = True
+    cooldown_candles: int = 3
+    reentry_adx_max: float = 22.0
 
 
 class TradingSettings(BaseModel):
@@ -123,6 +147,8 @@ class TradingSettings(BaseModel):
     operation: OperationConfig = Field(default_factory=OperationConfig)
     alerts: AlertsConfig = Field(default_factory=AlertsConfig)
     regime: RegimeConfig = Field(default_factory=RegimeConfig)
+    grid: GridConfig = Field(default_factory=GridConfig)
+    breakout: BreakoutConfig = Field(default_factory=BreakoutConfig)
 
     @model_validator(mode="after")
     def validate_assets(self):

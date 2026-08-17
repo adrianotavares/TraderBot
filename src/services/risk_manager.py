@@ -16,6 +16,8 @@ class RiskManager:
         max_daily_loss_usdt: float = 100.0,
         max_trades_per_day: int = 50,
         max_open_orders: int = 5,
+        max_grid_trades_per_day: int = 20,
+        max_grid_open_orders: int = 10,
         circuit_breaker_errors: int = 5,
         circuit_breaker_pause_seconds: int = 300,
     ):
@@ -26,11 +28,14 @@ class RiskManager:
         self.max_daily_loss_usdt = max_daily_loss_usdt
         self.max_trades_per_day = max_trades_per_day
         self.max_open_orders = max_open_orders
+        self.max_grid_trades_per_day = max_grid_trades_per_day
+        self.max_grid_open_orders = max_grid_open_orders
         self.circuit_breaker_errors = circuit_breaker_errors
         self.circuit_breaker_pause_seconds = circuit_breaker_pause_seconds
         self._consecutive_errors = 0
         self._circuit_open_until = 0.0
         self._daily_trades = 0
+        self._daily_grid_trades = 0
         self._daily_loss_usdt = 0.0
         self._day_key = self._today_key()
 
@@ -42,6 +47,7 @@ class RiskManager:
         if today != self._day_key:
             self._day_key = today
             self._daily_trades = 0
+            self._daily_grid_trades = 0
             self._daily_loss_usdt = 0.0
 
     def record_api_success(self):
@@ -117,6 +123,40 @@ class RiskManager:
         if side == "SELL" and quantity > base_balance:
             return False, "insufficient base balance"
         return True, "ok"
+
+    def validate_grid_order(
+        self,
+        side: str,
+        quantity: float,
+        price: float,
+        quote_balance: float,
+        base_balance: float,
+        min_notional: float,
+        step_size: float,
+        open_orders_count: int,
+    ) -> tuple[bool, str]:
+        self._reset_daily_counters_if_needed()
+
+        if self.is_circuit_open():
+            return False, "circuit breaker is open"
+        if self._daily_grid_trades >= self.max_grid_trades_per_day:
+            return False, "max grid trades per day reached"
+        if open_orders_count >= self.max_grid_open_orders:
+            return False, "max grid open orders reached"
+        if quantity < step_size:
+            return False, f"quantity {quantity} below step_size {step_size}"
+        notional = quantity * price
+        if min_notional > 0 and notional < min_notional:
+            return False, f"notional {notional:.4f} below min {min_notional}"
+        if side == "BUY" and notional > quote_balance:
+            return False, "insufficient quote balance"
+        if side == "SELL" and quantity > base_balance:
+            return False, "insufficient base balance"
+        return True, "ok"
+
+    def record_grid_trade(self):
+        self._reset_daily_counters_if_needed()
+        self._daily_grid_trades += 1
 
     def record_trade_pnl(self, pnl_usdt: float):
         self._reset_daily_counters_if_needed()

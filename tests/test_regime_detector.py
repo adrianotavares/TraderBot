@@ -85,3 +85,13 @@ def test_signals_dict_keys(detector):
         "ema_compressed",
         "range_bound",
     }
+
+
+def test_channel_levels_exposed(detector):
+    data = _make_range_data(80)
+    result = detector.evaluate(data)
+    if result.signals["range_bound"]:
+        assert result.support is not None
+        assert result.resistance is not None
+        assert result.resistance > result.support
+        assert result.channel_width_pct > 0

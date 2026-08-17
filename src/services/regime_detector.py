@@ -15,6 +15,9 @@ class RegimeResult:
     signals: dict = field(default_factory=dict)
     adx_value: float = 0.0
     rsi_value: float = 0.0
+    support: float | None = None
+    resistance: float | None = None
+    channel_width_pct: float = 0.0
 
 
 class RegimeDetector:
@@ -35,7 +38,7 @@ class RegimeDetector:
         touch_tolerance_pct: float = 0.3,
         min_lateral_signals: int = 3,
         min_candles: int = 60,
-        action_in_lateral: str = "pause",
+        action_in_lateral: Literal["pause", "grid"] = "pause",
     ):
         self.enabled = enabled
         self.adx_period = adx_period
@@ -84,11 +87,12 @@ class RegimeDetector:
         rsi_series = rsi(df["close_price"], self.rsi_period, last_only=False)
         rsi_value = float(rsi_series.iloc[-1]) if not pd.isna(rsi_series.iloc[-1]) else 50.0
 
+        channel = self._compute_channel(df)
         signals = {
             "adx_low": self._check_adx_low(adx_value),
             "rsi_neutral": self._check_rsi_neutral(rsi_value),
             "ema_compressed": self._check_ema_compressed(df),
-            "range_bound": self._check_range_bound(df),
+            "range_bound": channel["range_bound"],
         }
         score = sum(1 for v in signals.values() if v)
 
@@ -105,6 +109,9 @@ class RegimeDetector:
             signals=signals,
             adx_value=adx_value,
             rsi_value=rsi_value,
+            support=channel["support"],
+            resistance=channel["resistance"],
+            channel_width_pct=channel["channel_width_pct"],
         )
 
     def _check_adx_low(self, adx_value: float) -> bool:
@@ -125,15 +132,25 @@ class RegimeDetector:
         spread_pct = abs(float(ema_fast.iloc[-1]) - float(ema_slow.iloc[-1])) / last_close * 100
         return spread_pct < self.ema_compression_pct
 
-    def _check_range_bound(self, df: pd.DataFrame) -> bool:
+    def _compute_channel(self, df: pd.DataFrame) -> dict:
         window = df.tail(self.range_lookback)
         if len(window) < self.min_touches:
-            return False
+            return {
+                "range_bound": False,
+                "support": None,
+                "resistance": None,
+                "channel_width_pct": 0.0,
+            }
 
         support = float(window["low_price"].min())
         resistance = float(window["high_price"].max())
         if support <= 0 or resistance <= support:
-            return False
+            return {
+                "range_bound": False,
+                "support": None,
+                "resistance": None,
+                "channel_width_pct": 0.0,
+            }
 
         tol = self.touch_tolerance_pct / 100
         support_hits = 0
@@ -146,4 +163,15 @@ class RegimeDetector:
             if high >= resistance * (1 - tol):
                 resistance_hits += 1
 
-        return support_hits >= self.min_touches and resistance_hits >= self.min_touches
+        mid = (support + resistance) / 2
+        channel_width_pct = ((resistance - support) / mid * 100) if mid > 0 else 0.0
+        range_bound = (
+            support_hits >= self.min_touches and resistance_hits >= self.min_touches
+        )
+
+        return {
+            "range_bound": range_bound,
+            "support": support if range_bound else None,
+            "resistance": resistance if range_bound else None,
+            "channel_width_pct": channel_width_pct if range_bound else 0.0,
+        }

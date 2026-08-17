@@ -12,6 +12,8 @@ from services.market_data import MarketDataService
 from services.order_executor import OrderExecutor
 from services.risk_manager import RiskManager
 from services.regime_detector import RegimeDetector
+from services.grid_spot import GridSpotManager
+from services.breakout_detector import BreakoutDetector
 
 
 def _validate_api_keys(api_key: str, secret_key: str):
@@ -85,6 +87,9 @@ class BinanceTraderBot:
         risk_config=None,
         alerts_config=None,
         regime_config=None,
+        grid_config=None,
+        breakout_config=None,
+        breakout_price: float = 0.0,
         state_store=None,
     ):
         print("------------------------------------------------")
@@ -95,6 +100,8 @@ class BinanceTraderBot:
         risk_config = risk_config or {}
         alerts_config = alerts_config or {}
         regime_config = regime_config or {}
+        grid_config = grid_config or {}
+        breakout_config = breakout_config or {}
 
         self.stock_code = stock_code
         self.operation_code = operation_code
@@ -152,6 +159,8 @@ class BinanceTraderBot:
             max_daily_loss_usdt=risk_config.get("max_daily_loss_usdt", 100.0),
             max_trades_per_day=risk_config.get("max_trades_per_day", 50),
             max_open_orders=risk_config.get("max_open_orders", 5),
+            max_grid_trades_per_day=risk_config.get("max_grid_trades_per_day", 20),
+            max_grid_open_orders=grid_config.get("max_open_orders", 10),
             circuit_breaker_errors=risk_config.get("circuit_breaker_errors", 5),
             circuit_breaker_pause_seconds=risk_config.get(
                 "circuit_breaker_pause_seconds", 300
@@ -160,6 +169,12 @@ class BinanceTraderBot:
         self.state_store = state_store or StateStore()
         self.alerts_config = alerts_config
         self.regime_detector = RegimeDetector(**regime_config) if regime_config else RegimeDetector(enabled=False)
+        grid_kwargs = {k: v for k, v in grid_config.items() if k != "max_open_orders"}
+        self.grid_manager = GridSpotManager(**grid_kwargs) if grid_config else GridSpotManager(enabled=False)
+        self.breakout_detector = (
+            BreakoutDetector(**breakout_config) if breakout_config else BreakoutDetector(enabled=False)
+        )
+        self.breakout_price = breakout_price
 
         self.engine = TradingEngine(
             bot=self,
@@ -169,6 +184,9 @@ class BinanceTraderBot:
             state_store=self.state_store,
             alerts_config=alerts_config,
             regime_detector=self.regime_detector,
+            grid_manager=self.grid_manager,
+            breakout_detector=self.breakout_detector,
+            breakout_price=breakout_price,
         )
         self.engine.bootstrap()
 

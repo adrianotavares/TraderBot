@@ -18,6 +18,10 @@ class BotState:
     last_buy_price: float = 0.0
     last_sell_price: float = 0.0
     actual_trade_position: bool = False
+    active_mode: str = "trend"
+    grid_support: float = 0.0
+    grid_resistance: float = 0.0
+    breakout_cooldown_candles: int = 0
     updated_at: str = ""
 
     def touch(self):
@@ -63,6 +67,21 @@ class StateStore:
                 );
                 """
             )
+            self._migrate(conn)
+
+    def _migrate(self, conn):
+        columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(bot_state)").fetchall()
+        }
+        migrations = {
+            "active_mode": "TEXT NOT NULL DEFAULT 'trend'",
+            "grid_support": "REAL NOT NULL DEFAULT 0",
+            "grid_resistance": "REAL NOT NULL DEFAULT 0",
+            "breakout_cooldown_candles": "INTEGER NOT NULL DEFAULT 0",
+        }
+        for name, ddl in migrations.items():
+            if name not in columns:
+                conn.execute(f"ALTER TABLE bot_state ADD COLUMN {name} {ddl}")
 
     def load_state(self, operation_code: str) -> BotState:
         with self._connect() as conn:
@@ -83,6 +102,14 @@ class StateStore:
             last_buy_price=row["last_buy_price"],
             last_sell_price=row["last_sell_price"],
             actual_trade_position=bool(row["actual_trade_position"]),
+            active_mode=row["active_mode"] if "active_mode" in row.keys() else "trend",
+            grid_support=row["grid_support"] if "grid_support" in row.keys() else 0.0,
+            grid_resistance=row["grid_resistance"] if "grid_resistance" in row.keys() else 0.0,
+            breakout_cooldown_candles=(
+                row["breakout_cooldown_candles"]
+                if "breakout_cooldown_candles" in row.keys()
+                else 0
+            ),
             updated_at=row["updated_at"],
         )
 
@@ -93,14 +120,20 @@ class StateStore:
                 """
                 INSERT INTO bot_state (
                     operation_code, take_profit_index, last_trade_decision,
-                    last_buy_price, last_sell_price, actual_trade_position, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    last_buy_price, last_sell_price, actual_trade_position,
+                    active_mode, grid_support, grid_resistance,
+                    breakout_cooldown_candles, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(operation_code) DO UPDATE SET
                     take_profit_index = excluded.take_profit_index,
                     last_trade_decision = excluded.last_trade_decision,
                     last_buy_price = excluded.last_buy_price,
                     last_sell_price = excluded.last_sell_price,
                     actual_trade_position = excluded.actual_trade_position,
+                    active_mode = excluded.active_mode,
+                    grid_support = excluded.grid_support,
+                    grid_resistance = excluded.grid_resistance,
+                    breakout_cooldown_candles = excluded.breakout_cooldown_candles,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -110,6 +143,10 @@ class StateStore:
                     state.last_buy_price,
                     state.last_sell_price,
                     int(state.actual_trade_position),
+                    state.active_mode,
+                    state.grid_support,
+                    state.grid_resistance,
+                    state.breakout_cooldown_candles,
                     state.updated_at,
                 ),
             )
