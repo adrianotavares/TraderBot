@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>{% block title %}TraderBot{% endblock %}</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap"
+            rel="stylesheet"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"
+            rel="stylesheet"
+        />
+        <link
+            rel="stylesheet"
+            href="{{ url_for('static', filename='css/app.css') }}"
+        />
+    </head>
+    <body>
+        <header class="app-bar">
+            <div class="brand">
+                <span class="material-symbols-outlined">candlestick_chart</span>
+                TraderBot
+            </div>
+            <nav>
+                <a
+                    href="{{ url_for('routes.dashboard') }}"
+                    class="{{ 'active' if active_page == 'acompanhamento' else '' }}"
+                    >Acompanhamento</a
+                >
+                <a
+                    href="{{ url_for('routes.config_page') }}"
+                    class="{{ 'active' if active_page == 'config' else '' }}"
+                    >Configuração</a
+                >
+            </nav>
+        </header>
+        <main>{% block content %}{% endblock %}</main>
+        {% block scripts %}{% endblock %}
+    </body>
+</html>

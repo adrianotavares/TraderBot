@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Acompanhamento{% endblock %}
+{% block content %}
+<h1>Acompanhamento</h1>
+<p class="subtitle">
+    Evolução dos ativos no candle de {{ config.CANDLE_PERIOD }}
+</p>
+
+<div class="toolbar">
+    <div class="chips" id="asset-chips"></div>
+    <button type="button" class="icon-btn" id="refresh-btn">
+        <span class="material-symbols-outlined">refresh</span>
+        Atualizar
+    </button>
+</div>
+
+<div id="log-list" class="log-list"></div>
+<div id="empty-state" class="empty" hidden>
+    Nenhum evento no log ainda. Os ciclos do bot aparecem aqui automaticamente.
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const ASSETS = {{ config.stocks_traded_list | tojson }};
+    const REFRESH_MS = 8000;
+    let selectedOperation = "";
+
+    function escapeHtml(text) {
+        return String(text)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#39;");
+    }
+
+    function renderChips() {
+        const container = document.getElementById("asset-chips");
+        const chips = [{ operationCode: "", label: "Todos" }].concat(
+            ASSETS.map((asset) => ({
+                operationCode: asset.operationCode,
+                label: asset.stockCode,
+            }))
+        );
+        container.innerHTML = chips
+            .map(
+                (chip) => `
+            <button type="button" class="chip ${
+                chip.operationCode === selectedOperation ? "active" : ""
+            }" data-operation="${escapeHtml(chip.operationCode)}">${escapeHtml(chip.label)}</button>
+        `
+            )
+            .join("");
+        container.querySelectorAll(".chip").forEach((button) => {
+            button.onclick = () => {
+                selectedOperation = button.dataset.operation;
+                renderChips();
+                loadLogs();
+            };
+        });
+    }
+
+    function toneFor(entry) {
+        if (entry.event === "asset_variation") {
+            return entry.direction || (entry.variation_pct > 0 ? "up" : entry.variation_pct < 0 ? "down" : "");
+        }
+        if (entry.event === "stop_loss" || entry.level === "ERROR") return "warn";
+        if (entry.event === "take_profit") return "up";
+        return "info";
+    }
+
+    function formatRegimeMessage(entry) {
+        const regime = entry.regime || "DISABLED";
+        const parts = [];
+        if (entry.score != null) parts.push(`score = ${entry.score}`);
+        if (entry.adx != null) parts.push(`ADX=${Number(entry.adx).toFixed(1)}`);
+        if (entry.rsi != null) parts.push(`RSI=${Number(entry.rsi).toFixed(1)}`);
+        if (entry.signals && typeof entry.signals === "object") {
+            Object.entries(entry.signals).forEach(([name, active]) => {
+                if (active) parts.push(name);
+            });
+        }
+        if (!parts.length) {
+            return `Regime detected - ${regime}`;
+        }
+        return `Regime detected - ${regime} (${parts.join(", ")})`;
+    }
+
+    function displayMessage(entry) {
+        if (entry.event === "regime_detected") {
+            return formatRegimeMessage(entry);
+        }
+        return entry.message || "";
+    }
+
+    function formatVariation(entry) {
+        if (entry.event !== "asset_variation" || entry.variation_pct == null) {
+            return "";
+        }
+        const sign = entry.variation_pct > 0 ? "+" : "";
+        return `${sign}${Number(entry.variation_pct).toFixed(2)}%`;
+    }
+
+    function renderLogs(logs) {
+        const list = document.getElementById("log-list");
+        const empty = document.getElementById("empty-state");
+        if (!logs.length) {
+            list.innerHTML = "";
+            empty.hidden = false;
+            empty.textContent =
+                "Nenhum evento no log ainda. Os ciclos do bot aparecem aqui automaticamente.";
+            return;
+        }
+        empty.hidden = true;
+        empty.textContent =
+            "Nenhum evento no log ainda. Os ciclos do bot aparecem aqui automaticamente.";
+        list.innerHTML = logs
+            .map((entry) => {
+                const tone = toneFor(entry);
+                const variation = formatVariation(entry);
+                const meta = [
+                    entry.timestamp || "",
+                    entry.stock_code || entry.operation_code || "",
+                    entry.event || entry.level || "",
+                ]
+                    .filter(Boolean)
+                    .join(" · ");
+                return `
+                    <article class="log-card ${tone}">
+                        <span class="marker"></span>
+                        <div>
+                            <p class="log-message">${escapeHtml(displayMessage(entry))}</p>
+                            <p class="log-meta">${escapeHtml(meta)}</p>
+                        </div>
+                        ${
+                            variation
+                                ? `<span class="variation ${tone}">${escapeHtml(variation)}</span>`
+                                : ""
+                        }
+                    </article>
+                `;
+            })
+            .join("");
+    }
+
+    async function loadLogs() {
+        const list = document.getElementById("log-list");
+        const empty = document.getElementById("empty-state");
+        try {
+            const params = new URLSearchParams({ limit: "200" });
+            if (selectedOperation) params.set("operation_code", selectedOperation);
+            const response = await fetch(`/api/logs?${params.toString()}`);
+            if (!response.ok) {
+                throw new Error("bad status");
+            }
+            const data = await response.json();
+            renderLogs(data.logs || []);
+        } catch (err) {
+            list.innerHTML = "";
+            empty.hidden = false;
+            empty.textContent = "Não foi possível carregar o log.";
+        }
+    }
+
+    document.getElementById("refresh-btn").onclick = loadLogs;
+    renderChips();
+    loadLogs();
+    setInterval(() => {
+        if (document.hidden) return;
+        loadLogs();
+    }, REFRESH_MS);
+</script>
+{% endblock %}
