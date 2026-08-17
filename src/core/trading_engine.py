@@ -9,6 +9,7 @@ from modules.alerts import send_alert
 from modules.logging_setup import log_event
 from persistence.state_store import BotState
 from services.order_executor import OrderExecutor
+from services.regime_router import can_run_grid, resolve_regime_action
 
 
 class TradingEngine:
@@ -21,6 +22,9 @@ class TradingEngine:
         state_store,
         alerts_config=None,
         regime_detector=None,
+        grid_manager=None,
+        breakout_detector=None,
+        breakout_price: float = 0.0,
     ):
         self.bot = bot
         self.market_data = market_data
@@ -29,6 +33,9 @@ class TradingEngine:
         self.state_store = state_store
         self.alerts_config = alerts_config or {}
         self.regime_detector = regime_detector
+        self.grid_manager = grid_manager
+        self.breakout_detector = breakout_detector
+        self.breakout_price = breakout_price
         self.state = BotState(operation_code=bot.operation_code)
 
     def bootstrap(self):
@@ -82,6 +89,112 @@ class TradingEngine:
         if not self.regime_detector or not self.regime_detector.enabled:
             return None
         return self.regime_detector.evaluate(self.bot.stock_data)
+
+    def _check_breakout(self):
+        if not self.breakout_detector or not self.breakout_detector.enabled:
+            return None
+        if self.breakout_price <= 0:
+            return None
+        return self.breakout_detector.evaluate(self.bot.stock_data, self.breakout_price)
+
+    def _can_run_grid(self, regime) -> bool:
+        return can_run_grid(
+            regime,
+            grid_manager=self.grid_manager,
+            regime_detector=self.regime_detector,
+            breakout_detector=self.breakout_detector,
+            breakout_cooldown_candles=self.state.breakout_cooldown_candles,
+        )
+
+    def _resolve_regime_action(self, regime, breakout) -> str:
+        return resolve_regime_action(
+            regime,
+            breakout,
+            regime_detector=self.regime_detector,
+            grid_manager=self.grid_manager,
+            breakout_detector=self.breakout_detector,
+            breakout_cooldown_candles=self.state.breakout_cooldown_candles,
+        )
+
+    def _log_regime_detected(self, regime, breakout, action: str):
+        payload = {
+            "operation_code": self.bot.operation_code,
+            "event": "regime_detected",
+            "action": action,
+            "active_mode": self.state.active_mode,
+        }
+        if not self.regime_detector or not self.regime_detector.enabled:
+            payload["regime"] = "DISABLED"
+            log_event(logging.INFO, "Regime detected", **payload)
+            print("\nRegime: DISABLED -> atr_trend")
+            return
+        if not regime:
+            return
+
+        payload.update(
+            {
+                "regime": regime.regime,
+                "score": regime.score,
+                "adx": round(regime.adx_value, 2),
+                "rsi": round(regime.rsi_value, 2),
+                "signals": regime.signals,
+            }
+        )
+        if regime.support is not None:
+            payload["support"] = round(regime.support, 2)
+            payload["resistance"] = round(regime.resistance, 2)
+            payload["channel_width_pct"] = round(regime.channel_width_pct, 2)
+        if breakout:
+            payload["breakout_confirmed"] = breakout.confirmed
+            if self.breakout_price > 0:
+                payload["breakout_price"] = self.breakout_price
+            payload["volume_ratio"] = round(breakout.volume_ratio, 2)
+
+        log_event(logging.INFO, "Regime detected", **payload)
+        print(
+            f"\nRegime: {regime.regime} (score={regime.score}, "
+            f"ADX={regime.adx_value:.1f}, RSI={regime.rsi_value:.1f}) -> {action}"
+        )
+
+    def _shutdown_grid(self):
+        if not self.grid_manager:
+            return
+        cancelled = self.grid_manager.shutdown(self.order_executor, self.bot.open_orders)
+        if cancelled:
+            log_event(
+                logging.INFO,
+                "Grid orders cancelled",
+                operation_code=self.bot.operation_code,
+                event="grid_shutdown",
+                cancelled=cancelled,
+            )
+        self.state.active_mode = "trend"
+        self.state.grid_support = 0.0
+        self.state.grid_resistance = 0.0
+
+    def _run_grid_cycle(self, regime):
+        self.state.active_mode = "grid"
+        self.state.grid_support = regime.support or 0.0
+        self.state.grid_resistance = regime.resistance or 0.0
+        result = self.grid_manager.sync_grid(
+            bot=self.bot,
+            order_executor=self.order_executor,
+            risk_manager=self.risk_manager,
+            regime=regime,
+            operation_code=self.bot.operation_code,
+            quote_balance=self._quote_balance(),
+            base_balance=self.bot.last_stock_account_balance,
+            open_orders=self.bot.open_orders,
+            min_notional=self.bot.min_notional,
+            step_size=self.bot.step_size,
+        )
+        print(
+            f"\nGrid ativo: S={regime.support:.2f} R={regime.resistance:.2f} "
+            f"({regime.channel_width_pct:.2f}%) — ordens colocadas: {result.get('placed', 0)}"
+        )
+        self.bot.time_to_sleep = self.bot.time_to_trade
+        self._sync_bot_to_state()
+        print("------------------------------------------------")
 
     def _handle_stop_loss(self) -> bool:
         if not self.risk_manager.check_stop_loss(
@@ -239,7 +352,45 @@ class TradingEngine:
             return
 
         regime = self._check_regime()
-        if regime and regime.regime in ("LATERAL", "GRAY"):
+        breakout = self._check_breakout()
+        action = self._resolve_regime_action(regime, breakout)
+        self._log_regime_detected(regime, breakout, action)
+
+        if breakout and breakout.confirmed:
+            if self.state.active_mode == "grid":
+                self._shutdown_grid()
+            self.state.active_mode = "trend"
+            if self.breakout_detector:
+                self.state.breakout_cooldown_candles = self.breakout_detector.cooldown_candles
+            log_event(
+                logging.INFO,
+                "Breakout confirmed — atr_trend reactivated",
+                operation_code=self.bot.operation_code,
+                event="regime_resume_breakout",
+                price=breakout.price,
+                adx=breakout.adx_value,
+                volume_ratio=round(breakout.volume_ratio, 2),
+                signals=breakout.signals,
+            )
+            send_alert(
+                self.alerts_config.get("webhook_url", ""),
+                "Breakout",
+                (
+                    f"{self.bot.operation_code} breakout at {breakout.price:.2f} "
+                    f"(ADX={breakout.adx_value:.1f}, vol={breakout.volume_ratio:.1f}x)"
+                ),
+                self.alerts_config.get("enabled", False),
+            )
+            print(
+                f"\nBreakout confirmado: preco={breakout.price:.2f}, "
+                f"ADX={breakout.adx_value:.1f}, volume={breakout.volume_ratio:.1f}x "
+                f"— reativando atr_trend"
+            )
+        elif action == "grid":
+            self._run_grid_cycle(regime)
+            return
+
+        elif action == "pause":
             log_event(
                 logging.INFO,
                 "Regime pause: strategy skipped",
@@ -256,10 +407,20 @@ class TradingEngine:
                 f"ADX={regime.adx_value:.1f}, RSI={regime.rsi_value:.1f}) — pausando estrategia"
             )
             print(f" - Sinais: {regime.signals}")
+            if self.state.breakout_cooldown_candles > 0:
+                self.state.breakout_cooldown_candles -= 1
             self.bot.time_to_sleep = self.bot.time_to_trade
             self._sync_bot_to_state()
             print("------------------------------------------------")
             return
+        elif self.state.active_mode == "grid":
+            self._shutdown_grid()
+
+        if self.state.breakout_cooldown_candles > 0:
+            self.state.breakout_cooldown_candles -= 1
+
+        if regime and regime.regime == "TREND":
+            self.state.active_mode = "trend"
 
         self.bot.last_trade_decision = StrategyRunner.execute(
             self.bot,

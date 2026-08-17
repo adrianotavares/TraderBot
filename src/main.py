@@ -14,6 +14,9 @@ active_bots: list[BinanceTraderBot] = []
 
 
 def trader_loop(stock_start: StockStartModel, settings, env):
+    asset_cfg = next(
+        asset for asset in settings.assets if asset.operation_code == stock_start.operationCode
+    )
     bot = BinanceTraderBot(
         stock_code=stock_start.stockCode,
         operation_code=stock_start.operationCode,
@@ -37,6 +40,9 @@ def trader_loop(stock_start: StockStartModel, settings, env):
         risk_config=settings.risk.model_dump(),
         alerts_config=settings.alerts.model_dump(),
         regime_config=settings.regime.model_dump(),
+        grid_config=settings.grid.model_dump(),
+        breakout_config=settings.breakout.model_dump(),
+        breakout_price=asset_cfg.breakout_price,
     )
     active_bots.append(bot)
     total_executed = 1

@@ -137,6 +137,21 @@ class OrderExecutor:
             createLogOrder(order)
         return order
 
+    def place_limit(self, side: str, quantity: float, price: float) -> Optional[dict]:
+        limit_price = self._adjust(price, self.tick_size, as_string=True)
+        quantity = self._adjust(quantity, as_string=True)
+        order = self.client.create_order(
+            symbol=self.operation_code,
+            side=SIDE_BUY if side == "BUY" else SIDE_SELL,
+            type=ORDER_TYPE_LIMIT,
+            timeInForce="GTC",
+            quantity=quantity,
+            price=limit_price,
+        )
+        if order:
+            createLogOrder(order)
+        return order
+
     def has_open_buy_order(self) -> tuple[bool, float, float]:
         self.partial_quantity_discount = 0.0
         last_buy_price = 0.0

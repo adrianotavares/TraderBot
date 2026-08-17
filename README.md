@@ -114,11 +114,13 @@ O bot avalia o mercado a cada ciclo com um score baseado no checklist de lateral
 | Range S/R | ≥3 toques no suporte e na resistência (60 candles) |
 
 **Regimes:**
-- `LATERAL` (score ≥ 3): pausa a `atr_trend` — sem novas ordens por sinal
-- `TREND` (ADX > 25 e score ≤ 1): opera normalmente
+- `LATERAL` (score ≥ 3): ativa **grid spot** no canal (com `action_in_lateral: grid`)
+- `TREND` (ADX > 25 e score ≤ 1): opera `atr_trend` normalmente
 - `GRAY`: pausa conservadora
 
-Stop loss e take profit **continuam ativos** mesmo em pausa.
+**Breakout:** quando ADX sobe, preço rompe `breakout_price` (ex.: US$ 67k) e volume confirma, o bot cancela o grid e reativa `atr_trend` automaticamente.
+
+Stop loss e take profit **continuam ativos** em todos os modos.
 
 Configuração em `config/trading.yaml`:
 
@@ -126,12 +128,26 @@ Configuração em `config/trading.yaml`:
 regime:
   enabled: true
   min_lateral_signals: 3
-  action_in_lateral: pause
+  action_in_lateral: grid
+
+grid:
+  enabled: true
+  levels: 6
+  capital_pct: 30
+
+breakout:
+  enabled: true
+  adx_min: 25
+  volume_multiplier: 1.5
+  cooldown_candles: 3
+
+assets:
+  - stock_code: BTC
+    operation_code: BTCUSDT
+    breakout_price: 67000
 ```
 
-Para desabilitar: `regime.enabled: false`
-
-Logs de pausa: `event: regime_pause` em `src/logs/trading_bot.json.log`
+Logs: `event: regime_detected`, `event: grid_cycle`, `event: regime_resume_breakout`, `event: regime_pause`
 
 ### 3. Dashboard web (opcional)
 

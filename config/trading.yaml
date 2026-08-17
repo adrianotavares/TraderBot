@@ -1,4 +1,4 @@
-environment: testnet
+environment: mainnet
 thread_lock: true
 
 strategy:
@@ -26,10 +26,11 @@ risk:
   max_daily_loss_usdt: 50.0
   max_trades_per_day: 5
   max_open_orders: 3
+  max_grid_trades_per_day: 20
 
 timing:
   candle_period: 4h
-  tempo_entre_trades: 3600
+  tempo_entre_trades: 150
   delay_entre_ordens: 7200
 
 assets:
@@ -37,6 +38,12 @@ assets:
     operation_code: BTCUSDT
     traded_quantity: 0
     traded_percentage: 10
+    breakout_price: 67000
+  - stock_code: ETH
+    operation_code: ETHUSDT
+    traded_quantity: 0
+    traded_percentage: 10
+    breakout_price: 2000
 
 operation:
   cancel_orders_on_shutdown: false
@@ -52,12 +59,30 @@ regime:
   adx_period: 14
   adx_lateral_threshold: 20
   adx_trend_threshold: 25
-  rsi_low: 40
-  rsi_high: 60
+  rsi_low: 30
+  rsi_high: 70
   ema_fast: 20
   ema_slow: 50
   ema_compression_pct: 0.5
   range_lookback: 60
   min_touches: 3
   min_lateral_signals: 3
-  action_in_lateral: pause
+  action_in_lateral: grid
+
+grid:
+  enabled: true
+  levels: 6
+  capital_pct: 30
+  min_channel_width_pct: 1.5
+  max_channel_width_pct: 8.0
+  min_profit_per_level_pct: 0.35
+  max_open_orders: 10
+
+breakout:
+  enabled: true
+  adx_min: 25
+  adx_rising_bars: 2
+  volume_multiplier: 1.5
+  require_bullish_candle: true
+  cooldown_candles: 3
+  reentry_adx_max: 22
