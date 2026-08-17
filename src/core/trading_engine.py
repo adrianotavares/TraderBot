@@ -8,6 +8,7 @@ from modules.StrategyRunner import StrategyRunner
 from modules.alerts import send_alert
 from modules.logging_setup import log_event
 from persistence.state_store import BotState
+from services.asset_variation import compute_candle_variation, format_variation_message
 from services.order_executor import OrderExecutor
 from services.regime_router import can_run_grid, resolve_regime_action
 
@@ -115,6 +116,27 @@ class TradingEngine:
             breakout_detector=self.breakout_detector,
             breakout_cooldown_candles=self.state.breakout_cooldown_candles,
         )
+
+    def _log_asset_variation(self):
+        variation = compute_candle_variation(self.bot.stock_data)
+        if not variation:
+            return
+        message = format_variation_message(
+            self.bot.stock_code,
+            variation["variation_pct"],
+            self.bot.candle_period,
+            variation["close_price"],
+        )
+        log_event(
+            logging.INFO,
+            message,
+            event="asset_variation",
+            operation_code=self.bot.operation_code,
+            stock_code=self.bot.stock_code,
+            candle_period=self.bot.candle_period,
+            **variation,
+        )
+        print(f" - {message}")
 
     def _log_regime_detected(self, regime, breakout, action: str):
         payload = {
@@ -342,6 +364,7 @@ class TradingEngine:
         print("Detalhes:")
         print(f' - Posição atual: {"Comprado" if self.bot.actual_trade_position else "Vendido"}')
         print(f" - Balanço atual: {self.bot.last_stock_account_balance:.4f} ({self.bot.stock_code})")
+        self._log_asset_variation()
 
         if self._handle_stop_loss():
             print("\nSTOP LOSS finalizado.\n")

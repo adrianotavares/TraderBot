@@ -223,6 +223,7 @@ Stop loss e take profit **continuam ativos** em todos os modos.
 
 | `event` | Descrição |
 |---------|-----------|
+| `asset_variation` | Variação % do candle atual (ex.: `BTC subiu 1.23% nas últimas 4h - 67234.50 usd`) — **todo ciclo** |
 | `regime_detected` | Regime, score, ADX, RSI, sinais e ação resolvida — **todo ciclo** |
 | `regime_pause` | Estratégia pausada (GRAY ou LATERAL sem grid válido) |
 | `grid_cycle` | Ciclo de sincronização do grid |
@@ -253,7 +254,7 @@ O bot inicia uma thread por ativo configurado. Com `thread_lock: true`, os ciclo
 PYTHONPATH=src python src/app/app.py
 ```
 
-Acesse `http://localhost:5000`. Alterações no dashboard gravam em `config/trading.yaml`. **Reinicie o bot** após salvar.
+Acesse `http://localhost:5000` para o acompanhamento (log estruturado) e `http://localhost:5000/config` para editar o YAML. O Flask escuta só em `127.0.0.1` por padrão (`FLASK_HOST` / `FLASK_PORT` para alterar). **Reinicie o bot** após salvar.
 
 ### Docker
 
@@ -261,7 +262,7 @@ Acesse `http://localhost:5000`. Alterações no dashboard gravam em `config/trad
 docker compose up -d
 ```
 
-Serviços: `bot` (trading loop) e `dashboard` (porta 5000).
+Serviços: `bot` (trading loop) e `dashboard` (porta `127.0.0.1:5000`).
 
 ### Backtests
 
