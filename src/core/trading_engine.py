@@ -20,6 +20,7 @@ class TradingEngine:
         risk_manager,
         state_store,
         alerts_config=None,
+        regime_detector=None,
     ):
         self.bot = bot
         self.market_data = market_data
@@ -27,6 +28,7 @@ class TradingEngine:
         self.risk_manager = risk_manager
         self.state_store = state_store
         self.alerts_config = alerts_config or {}
+        self.regime_detector = regime_detector
         self.state = BotState(operation_code=bot.operation_code)
 
     def bootstrap(self):
@@ -75,6 +77,11 @@ class TradingEngine:
         return self.market_data.get_account_balance(
             self.bot.quote_asset, self.bot.account_data
         )
+
+    def _check_regime(self):
+        if not self.regime_detector or not self.regime_detector.enabled:
+            return None
+        return self.regime_detector.evaluate(self.bot.stock_data)
 
     def _handle_stop_loss(self) -> bool:
         if not self.risk_manager.check_stop_loss(
@@ -229,6 +236,29 @@ class TradingEngine:
 
         if self.bot.actual_trade_position and self._handle_take_profit():
             print("\nTAKE PROFIT finalizado.\n")
+            return
+
+        regime = self._check_regime()
+        if regime and regime.regime in ("LATERAL", "GRAY"):
+            log_event(
+                logging.INFO,
+                "Regime pause: strategy skipped",
+                operation_code=self.bot.operation_code,
+                event="regime_pause",
+                regime=regime.regime,
+                score=regime.score,
+                adx=regime.adx_value,
+                rsi=regime.rsi_value,
+                signals=regime.signals,
+            )
+            print(
+                f"\nRegime {regime.regime} (score={regime.score}, "
+                f"ADX={regime.adx_value:.1f}, RSI={regime.rsi_value:.1f}) — pausando estrategia"
+            )
+            print(f" - Sinais: {regime.signals}")
+            self.bot.time_to_sleep = self.bot.time_to_trade
+            self._sync_bot_to_state()
+            print("------------------------------------------------")
             return
 
         self.bot.last_trade_decision = StrategyRunner.execute(

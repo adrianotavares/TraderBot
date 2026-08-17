@@ -11,6 +11,7 @@ from persistence.state_store import StateStore
 from services.market_data import MarketDataService
 from services.order_executor import OrderExecutor
 from services.risk_manager import RiskManager
+from services.regime_detector import RegimeDetector
 
 
 def _validate_api_keys(api_key: str, secret_key: str):
@@ -83,6 +84,7 @@ class BinanceTraderBot:
         testnet=False,
         risk_config=None,
         alerts_config=None,
+        regime_config=None,
         state_store=None,
     ):
         print("------------------------------------------------")
@@ -92,6 +94,7 @@ class BinanceTraderBot:
         take_profit_amount_percentage = take_profit_amount_percentage or []
         risk_config = risk_config or {}
         alerts_config = alerts_config or {}
+        regime_config = regime_config or {}
 
         self.stock_code = stock_code
         self.operation_code = operation_code
@@ -156,6 +159,7 @@ class BinanceTraderBot:
         )
         self.state_store = state_store or StateStore()
         self.alerts_config = alerts_config
+        self.regime_detector = RegimeDetector(**regime_config) if regime_config else RegimeDetector(enabled=False)
 
         self.engine = TradingEngine(
             bot=self,
@@ -164,6 +168,7 @@ class BinanceTraderBot:
             risk_manager=self.risk_manager,
             state_store=self.state_store,
             alerts_config=alerts_config,
+            regime_detector=self.regime_detector,
         )
         self.engine.bootstrap()
 
