@@ -131,7 +131,12 @@ class BinanceTraderBot:
 
         _validate_api_keys(api_key, secret_key)
         self.client_binance = BinanceClient(
-            api_key, secret_key, sync=True, sync_interval=30000, verbose=False, testnet=testnet
+            api_key,
+            secret_key,
+            sync=True,
+            sync_interval=BinanceClient.DEFAULT_SYNC_INTERVAL,
+            verbose=False,
+            testnet=testnet,
         )
         _validate_trading_permissions(self.client_binance, testnet)
 
