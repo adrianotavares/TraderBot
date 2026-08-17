@@ -36,6 +36,7 @@ def trader_loop(stock_start: StockStartModel, settings, env):
         testnet=settings.environment == "testnet",
         risk_config=settings.risk.model_dump(),
         alerts_config=settings.alerts.model_dump(),
+        regime_config=settings.regime.model_dump(),
     )
     active_bots.append(bot)
     total_executed = 1

@@ -39,7 +39,7 @@ devTrader = BinanceTraderBot(
 devTrader.updateAllData()
 
 print(f"\n{STOCK_CODE} - UT BOTS - {str(CANDLE_PERIOD)}")
-backtestRunner(
+result = backtestRunner(
     stock_data        = devTrader.stock_data,
     strategy_function = utBotAlerts,
     periods           = CLANDES_RODADOS,
@@ -48,6 +48,7 @@ backtestRunner(
     atr_period        = 1,
     verbose           = False,
 )
+print(f"Lucro: {result['profit_percentage']:.2f}%")
 
 print(f"\n{STOCK_CODE} - MA RSI e VOLUME - {str(CANDLE_PERIOD)}")
 backtestRunner(

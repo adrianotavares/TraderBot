@@ -94,6 +94,25 @@ class AlertsConfig(BaseModel):
     webhook_url: str = ""
 
 
+class RegimeConfig(BaseModel):
+    enabled: bool = True
+    adx_period: int = 14
+    adx_lateral_threshold: float = 20.0
+    adx_trend_threshold: float = 25.0
+    rsi_period: int = 14
+    rsi_low: float = 40.0
+    rsi_high: float = 60.0
+    ema_fast: int = 20
+    ema_slow: int = 50
+    ema_compression_pct: float = 0.5
+    range_lookback: int = 60
+    min_touches: int = 3
+    touch_tolerance_pct: float = 0.3
+    min_lateral_signals: int = 3
+    min_candles: int = 60
+    action_in_lateral: Literal["pause"] = "pause"
+
+
 class TradingSettings(BaseModel):
     environment: Literal["testnet", "mainnet"] = "testnet"
     thread_lock: bool = True
@@ -103,6 +122,7 @@ class TradingSettings(BaseModel):
     assets: List[AssetConfig]
     operation: OperationConfig = Field(default_factory=OperationConfig)
     alerts: AlertsConfig = Field(default_factory=AlertsConfig)
+    regime: RegimeConfig = Field(default_factory=RegimeConfig)
 
     @model_validator(mode="after")
     def validate_assets(self):

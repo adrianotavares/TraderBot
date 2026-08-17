@@ -48,19 +48,90 @@ Edite ativos, estratégias, risco e tempos. Exemplo:
 ```yaml
 environment: testnet
 strategy:
-  main: weapon_candle
+  main: atr_trend
   fallback: moving_average
   fallback_enabled: true
 assets:
   - stock_code: BTC
     operation_code: BTCUSDT
-    traded_quantity: 0.001
+    traded_quantity: 0
+    traded_percentage: 10
+timing:
+  candle_period: 4h
 risk:
-  stop_loss_pct: 0.5
-  max_daily_loss_usdt: 100
+  stop_loss_pct: 2.0
+  max_daily_loss_usdt: 50
 ```
 
-Estratégias disponíveis: `weapon_candle`, `moving_average`, `moving_average_antecipation`, `vortex`, `rsi`, `ma_rsi_volume`, `ut_bot_alerts`.
+Estratégias disponíveis: `atr_trend`, `weapon_candle`, `moving_average`, `moving_average_antecipation`, `vortex`, `rsi`, `ma_rsi_volume`, `ut_bot_alerts`.
+
+## Estratégia recomendada: ATR Trend 4h
+
+A configuração padrão usa **trend following com trailing stop ATR + filtro SMA200** em candles de 4h:
+
+```yaml
+strategy:
+  main: atr_trend
+  main_args:
+    atr_period: 14
+    atr_multiplier: 2.5
+    trend_sma_period: 200
+  fallback: moving_average
+  fallback_args:
+    fast_window: 21
+    slow_window: 55
+timing:
+  candle_period: 4h
+```
+
+### Validar antes de operar
+
+1. Comparar estratégias (retorno, drawdown, trades):
+
+```bash
+PYTHONPATH=src python src/backtests_compare.py
+```
+
+2. Rodar testes unitários:
+
+```bash
+PYTHONPATH=src pytest tests/test_atr_trend.py -q
+```
+
+3. Operar na testnet por 48h e revisar `src/logs/trading_bot.json.log`
+
+Resultados do backtest comparativo são exportados para `data/backtest_compare_4h.csv`.
+
+## Detector de regime (lateral vs tendência)
+
+O bot avalia o mercado a cada ciclo com um score baseado no checklist de lateralização:
+
+| Sinal | Condição |
+|-------|----------|
+| ADX baixo | `ADX(14) < 20` |
+| RSI neutro | `40 <= RSI <= 60` |
+| EMAs coladas | `\|EMA20 - EMA50\| / preço < 0.5%` |
+| Range S/R | ≥3 toques no suporte e na resistência (60 candles) |
+
+**Regimes:**
+- `LATERAL` (score ≥ 3): pausa a `atr_trend` — sem novas ordens por sinal
+- `TREND` (ADX > 25 e score ≤ 1): opera normalmente
+- `GRAY`: pausa conservadora
+
+Stop loss e take profit **continuam ativos** mesmo em pausa.
+
+Configuração em `config/trading.yaml`:
+
+```yaml
+regime:
+  enabled: true
+  min_lateral_signals: 3
+  action_in_lateral: pause
+```
+
+Para desabilitar: `regime.enabled: false`
+
+Logs de pausa: `event: regime_pause` em `src/logs/trading_bot.json.log`
 
 ### 3. Dashboard web (opcional)
 
@@ -87,6 +158,14 @@ docker compose up -d
 Serviços: `bot` (trading loop) e `dashboard` (porta 5000).
 
 ### Backtests
+
+Comparacao recomendada (4 estrategias, 4h, ~180 dias):
+
+```bash
+PYTHONPATH=src python src/backtests_compare.py
+```
+
+Backtests legado de todas as estrategias:
 
 ```bash
 PYTHONPATH=src python src/backtests.py

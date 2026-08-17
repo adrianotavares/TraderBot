@@ -5,6 +5,7 @@ from strategies.ma_rsi_volume_strategy import getMovingAverageRSIVolumeStrategy
 from strategies.rsi_strategy import getRsiTradeStrategy
 from strategies.weapon_candle_trade_strategy import getWeaponCandleTradeStrategy
 from strategies.ut_bot_alerts import utBotAlerts
+from strategies.atr_trend import getAtrTrendStrategy
 
 STRATEGY_REGISTRY = {
     "weapon_candle": getWeaponCandleTradeStrategy,
@@ -14,6 +15,7 @@ STRATEGY_REGISTRY = {
     "rsi": getRsiTradeStrategy,
     "ma_rsi_volume": getMovingAverageRSIVolumeStrategy,
     "ut_bot_alerts": utBotAlerts,
+    "atr_trend": getAtrTrendStrategy,
 }
 
 # Legacy names used by the old dashboard

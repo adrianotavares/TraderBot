@@ -2,36 +2,41 @@ environment: testnet
 thread_lock: true
 
 strategy:
-  main: weapon_candle
-  main_args: {}
+  main: atr_trend
+  main_args:
+    atr_period: 14
+    atr_multiplier: 2.5
+    trend_sma_period: 200
   fallback: moving_average
-  fallback_args: {}
+  fallback_args:
+    fast_window: 21
+    slow_window: 55
   fallback_enabled: true
 
 risk:
-  acceptable_loss_pct: -1.0
-  stop_loss_pct: 0.5
+  acceptable_loss_pct: 1.5
+  stop_loss_pct: 2.0
   take_profit:
+    - at: 5
+      amount: 30
     - at: 10
-      amount: 50
-    - at: 25
-      amount: 50
-    - at: 50
-      amount: 100
-  max_daily_loss_usdt: 100.0
-  max_trades_per_day: 50
-  max_open_orders: 5
+      amount: 40
+    - at: 20
+      amount: 30
+  max_daily_loss_usdt: 50.0
+  max_trades_per_day: 5
+  max_open_orders: 3
 
 timing:
-  candle_period: 15m
-  tempo_entre_trades: 300
-  delay_entre_ordens: 300
+  candle_period: 4h
+  tempo_entre_trades: 3600
+  delay_entre_ordens: 7200
 
 assets:
   - stock_code: BTC
     operation_code: BTCUSDT
-    traded_quantity: 0.0017
-    traded_percentage: 100
+    traded_quantity: 0
+    traded_percentage: 10
 
 operation:
   cancel_orders_on_shutdown: false
@@ -41,3 +46,18 @@ operation:
 alerts:
   enabled: false
   webhook_url: ""
+
+regime:
+  enabled: true
+  adx_period: 14
+  adx_lateral_threshold: 20
+  adx_trend_threshold: 25
+  rsi_low: 40
+  rsi_high: 60
+  ema_fast: 20
+  ema_slow: 50
+  ema_compression_pct: 0.5
+  range_lookback: 60
+  min_touches: 3
+  min_lateral_signals: 3
+  action_in_lateral: pause
