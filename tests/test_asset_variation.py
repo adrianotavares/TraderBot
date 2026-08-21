@@ -1,6 +1,10 @@
 import pandas as pd
 
-from services.asset_variation import compute_candle_variation, format_variation_message
+from services.asset_variation import (
+    compute_candle_variation,
+    format_held_position_label,
+    format_variation_message,
+)
 
 
 def _klines(open_price: float, close_price: float) -> pd.DataFrame:
@@ -48,13 +52,24 @@ def test_compute_candle_variation_empty():
 def test_format_variation_message_uses_candle_period():
     assert (
         format_variation_message("BTC", 1.234, "4h", 67234.5)
-        == "BTC subiu 1.23% nas últimas 4h - 67234.50 usd"
+        == "BTC subiu 1.23% nas últimas 4h (67234.50 usd)"
     )
     assert (
         format_variation_message("ETH", -0.5, "15m", 2450.0)
-        == "ETH caiu 0.50% nas últimas 15m - 2450.00 usd"
+        == "ETH caiu 0.50% nas últimas 15m (2450.00 usd)"
     )
     assert (
         format_variation_message("BTC", 0.0, "4h", 67000)
-        == "BTC manteve o preço nas últimas 4h - 67000.00 usd"
+        == "BTC manteve o preço nas últimas 4h (67000.00 usd)"
+    )
+
+
+def test_format_held_position_label_includes_qty_value_and_pnl():
+    assert (
+        format_held_position_label("ETH", 0.02, 2450.0, 2400.0)
+        == "Comprado, 0.02 ETH, 49.00 usd, +2.08%"
+    )
+    assert (
+        format_held_position_label("BTC", 0.00007, 70000.0, 72000.0)
+        == "Comprado, 0.00007 BTC, 4.90 usd, -2.78%"
     )

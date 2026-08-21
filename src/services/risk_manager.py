@@ -82,17 +82,36 @@ class RiskManager:
         quote_balance: float,
         close_price: float,
         side: str,
+        min_notional: float = 0.0,
+        step_size: float = 0.0,
     ) -> float:
         if traded_quantity > 0:
-            return traded_quantity
-        if traded_percentage <= 0:
+            quantity = traded_quantity
+        elif traded_percentage <= 0:
             return 0.0
-        if side == "BUY":
+        elif side == "BUY":
             quote_to_use = quote_balance * (traded_percentage / 100)
             if close_price <= 0:
                 return 0.0
-            return quote_to_use / close_price
-        return balance * (traded_percentage / 100)
+            if (
+                min_notional > 0
+                and quote_to_use < min_notional <= quote_balance
+            ):
+                quote_to_use = min_notional
+            quantity = quote_to_use / close_price
+        else:
+            quantity = balance * (traded_percentage / 100)
+
+        if step_size <= 0:
+            return quantity
+        return MarketDataService.size_quantity_for_filters(
+            quantity=quantity,
+            price=close_price,
+            step_size=step_size,
+            min_notional=min_notional,
+            max_quote=quote_balance if side == "BUY" else None,
+            bump_to_min_notional=side == "BUY",
+        )
 
     def validate_order(
         self,

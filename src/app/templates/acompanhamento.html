@@ -67,6 +67,10 @@
         }
         if (entry.event === "stop_loss" || entry.level === "ERROR") return "warn";
         if (entry.event === "take_profit") return "up";
+        if (entry.event === "cycle_summary" && entry.unrealized_pnl_pct != null) {
+            if (entry.unrealized_pnl_pct > 0) return "up";
+            if (entry.unrealized_pnl_pct < 0) return "down";
+        }
         return "info";
     }
 

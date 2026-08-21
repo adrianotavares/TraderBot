@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass
 from typing import Literal, Optional
 
+from services.market_data import MarketDataService
 from services.regime_detector import RegimeResult
 
 
@@ -88,6 +89,13 @@ class GridSpotManager:
                 if key in open_by_side_price:
                     continue
                 quantity = quote_per_level / level.price if level.price > 0 else 0.0
+                quantity = MarketDataService.size_quantity_for_filters(
+                    quantity=quantity,
+                    price=level.price,
+                    step_size=step_size,
+                    min_notional=min_notional,
+                    max_quote=quote_per_level,
+                )
                 ok, reason = risk_manager.validate_grid_order(
                     side="BUY",
                     quantity=quantity,
@@ -113,9 +121,16 @@ class GridSpotManager:
                 key = ("SELL", level.price)
                 if key in open_by_side_price:
                     continue
+                quantity = MarketDataService.size_quantity_for_filters(
+                    quantity=qty_per_level,
+                    price=level.price,
+                    step_size=step_size,
+                    min_notional=min_notional,
+                    bump_to_min_notional=False,
+                )
                 ok, reason = risk_manager.validate_grid_order(
                     side="SELL",
-                    quantity=qty_per_level,
+                    quantity=quantity,
                     price=level.price,
                     quote_balance=quote_balance,
                     base_balance=base_balance,
@@ -126,7 +141,7 @@ class GridSpotManager:
                 if not ok:
                     logging.warning("Grid sell skipped at %.2f: %s", level.price, reason)
                     continue
-                order = order_executor.place_limit("SELL", qty_per_level, level.price)
+                order = order_executor.place_limit("SELL", quantity, level.price)
                 if order:
                     placed += 1
                     risk_manager.record_grid_trade()

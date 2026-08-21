@@ -74,15 +74,51 @@ class MarketDataService:
         }
 
     @staticmethod
-    def adjust_to_step(value: float, step: float, as_string: bool = False):
+    def _step_decimal_places(step: float) -> int:
         if step <= 0:
             raise ValueError("step must be greater than zero")
-        decimal_places = max(0, abs(int(math.floor(math.log10(step))))) if step < 1 else 0
+        return max(0, abs(int(math.floor(math.log10(step))))) if step < 1 else 0
+
+    @staticmethod
+    def adjust_to_step(value: float, step: float, as_string: bool = False):
+        decimal_places = MarketDataService._step_decimal_places(step)
         adjusted_value = math.floor(value / step) * step
         adjusted_value = round(adjusted_value, decimal_places)
         if as_string:
             return f"{adjusted_value:.{decimal_places}f}"
         return adjusted_value
+
+    @staticmethod
+    def ceil_to_step(value: float, step: float) -> float:
+        decimal_places = MarketDataService._step_decimal_places(step)
+        adjusted_value = math.ceil(value / step) * step
+        return round(adjusted_value, decimal_places)
+
+    @staticmethod
+    def size_quantity_for_filters(
+        quantity: float,
+        price: float,
+        step_size: float,
+        min_notional: float = 0.0,
+        max_quote: float | None = None,
+        bump_to_min_notional: bool = True,
+    ) -> float:
+        """Floor to LOT_SIZE, then raise to NOTIONAL when the quote balance allows."""
+        if quantity <= 0 or price <= 0 or step_size <= 0:
+            return 0.0
+        qty = MarketDataService.adjust_to_step(quantity, step_size)
+        if min_notional > 0 and qty * price < min_notional and bump_to_min_notional:
+            qty = MarketDataService.ceil_to_step(min_notional / price, step_size)
+            if qty * price < min_notional:
+                decimal_places = MarketDataService._step_decimal_places(step_size)
+                qty = round(qty + step_size, decimal_places)
+        if max_quote is not None and qty * price > max_quote:
+            qty = MarketDataService.adjust_to_step(max_quote / price, step_size)
+        if qty <= 0:
+            return 0.0
+        if min_notional > 0 and qty * price < min_notional:
+            return 0.0
+        return qty
 
     def get_account_balance(self, asset_code: str, account_data: dict) -> float:
         for stock in account_data.get("balances", []):
