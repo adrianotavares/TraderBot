@@ -91,3 +91,44 @@ def test_api_logs_rejects_invalid_limit():
     client = app.test_client()
     response = client.get("/api/logs?limit=abc")
     assert response.status_code == 400
+
+
+def test_api_portfolio_returns_total_usd(monkeypatch):
+    monkeypatch.setattr(
+        "routes.get_portfolio_snapshot",
+        lambda: {
+            "total_usd": 1250.5,
+            "total_pnl_usd": 150.0,
+            "total_pnl_pct": 15.0,
+            "assets": [
+                {
+                    "stock_code": "BTC",
+                    "operation_code": "BTCUSDT",
+                    "quantity": 0.01,
+                    "price": 65000.0,
+                    "usd_value": 650.0,
+                    "pnl_usd": 50.0,
+                    "pnl_pct": 8.33,
+                }
+            ],
+        },
+    )
+    client = app.test_client()
+    response = client.get("/api/portfolio")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["total_usd"] == 1250.5
+    assert payload["total_pnl_usd"] == 150.0
+    assert payload["total_pnl_pct"] == 15.0
+    assert payload["assets"][0]["stock_code"] == "BTC"
+
+
+def test_api_portfolio_returns_503_when_credentials_missing(monkeypatch):
+    def raise_missing():
+        raise ValueError("Credenciais da Binance não configuradas")
+
+    monkeypatch.setattr("routes.get_portfolio_snapshot", raise_missing)
+    client = app.test_client()
+    response = client.get("/api/portfolio")
+    assert response.status_code == 503
+    assert "Credenciais" in response.get_json()["error"]

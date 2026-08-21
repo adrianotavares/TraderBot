@@ -1,5 +1,7 @@
 import os
 import sys
+import threading
+import time
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SRC_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -17,9 +19,75 @@ from config.settings import (
     save_settings,
     settings_to_dashboard_dict,
 )
+from modules.BinanceClient import BinanceClient
 from modules.logging_setup import read_structured_logs
+from persistence.state_store import StateStore
+from services.portfolio import fetch_portfolio
 
 routes = Blueprint("routes", __name__)
+
+_PORTFOLIO_CACHE_TTL = 5.0
+_portfolio_lock = threading.Lock()
+_portfolio_cache = {"ts": 0.0, "data": None}
+_spot_client = None
+_spot_client_key = None
+
+
+def _create_spot_client(api_key: str, secret_key: str, testnet: bool):
+    return BinanceClient(
+        api_key,
+        secret_key,
+        sync=True,
+        ping=False,
+        verbose=False,
+        testnet=testnet,
+    )
+
+
+def get_spot_client(api_key: str, secret_key: str, testnet: bool):
+    global _spot_client, _spot_client_key
+    key = (api_key, secret_key, testnet)
+    with _portfolio_lock:
+        if _spot_client is None or _spot_client_key != key:
+            _spot_client = _create_spot_client(api_key, secret_key, testnet)
+            _spot_client_key = key
+        return _spot_client
+
+
+def _last_buy_prices(assets) -> dict:
+    store = StateStore()
+    prices = {}
+    for asset in assets:
+        state = store.load_state(asset.operation_code)
+        prices[asset.operation_code] = float(state.last_buy_price or 0)
+    return prices
+
+
+def get_portfolio_snapshot():
+    now = time.time()
+    with _portfolio_lock:
+        cached = _portfolio_cache["data"]
+        if cached is not None and now - _portfolio_cache["ts"] < _PORTFOLIO_CACHE_TTL:
+            return cached
+
+    settings, env = load_settings()
+    if not env.api_key or not env.secret_key:
+        raise ValueError("Credenciais da Binance não configuradas")
+
+    client = get_spot_client(
+        env.api_key,
+        env.secret_key,
+        testnet=settings.environment == "testnet",
+    )
+    snapshot = fetch_portfolio(
+        client,
+        settings.assets,
+        last_buy_prices=_last_buy_prices(settings.assets),
+    )
+    with _portfolio_lock:
+        _portfolio_cache["ts"] = time.time()
+        _portfolio_cache["data"] = snapshot
+    return snapshot
 
 
 def _validate_stocks_traded_list(stocks):
@@ -84,6 +152,16 @@ def get_config():
         return jsonify(_dashboard_config(settings))
     except Exception as e:
         return jsonify({"error": f"Erro ao carregar configuração: {str(e)}"}), 500
+
+
+@routes.route("/api/portfolio", methods=["GET"])
+def get_portfolio():
+    try:
+        return jsonify(get_portfolio_snapshot())
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 503
+    except Exception as e:
+        return jsonify({"error": f"Erro ao carregar saldo: {str(e)}"}), 500
 
 
 @routes.route("/api/logs", methods=["GET"])
