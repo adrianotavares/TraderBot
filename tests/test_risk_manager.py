@@ -64,3 +64,58 @@ def test_compute_trade_quantity_percentage(risk_manager):
         side="BUY",
     )
     assert qty == pytest.approx(0.01)
+
+
+def test_compute_trade_quantity_bumps_to_min_notional(risk_manager):
+    qty = risk_manager.compute_trade_quantity(
+        traded_quantity=0,
+        traded_percentage=50,
+        balance=0.0,
+        quote_balance=8.43,
+        close_price=72000.0,
+        side="BUY",
+        min_notional=5.0,
+    )
+    assert qty == pytest.approx(5.0 / 72000.0)
+
+
+def test_compute_trade_quantity_does_not_exceed_balance(risk_manager):
+    qty = risk_manager.compute_trade_quantity(
+        traded_quantity=0,
+        traded_percentage=50,
+        balance=0.0,
+        quote_balance=4.0,
+        close_price=72000.0,
+        side="BUY",
+        min_notional=5.0,
+    )
+    assert qty == pytest.approx(2.0 / 72000.0)
+
+
+def test_compute_trade_quantity_meets_notional_after_step_floor(risk_manager):
+    qty = risk_manager.compute_trade_quantity(
+        traded_quantity=0,
+        traded_percentage=50,
+        balance=0.0,
+        quote_balance=8.43,
+        close_price=72000.0,
+        side="BUY",
+        min_notional=5.0,
+        step_size=0.00001,
+    )
+    assert qty == pytest.approx(0.00007)
+    assert qty * 72000.0 >= 5.0
+
+
+def test_compute_trade_quantity_returns_zero_when_balance_below_notional(risk_manager):
+    qty = risk_manager.compute_trade_quantity(
+        traded_quantity=0,
+        traded_percentage=50,
+        balance=0.0,
+        quote_balance=4.0,
+        close_price=72000.0,
+        side="BUY",
+        min_notional=5.0,
+        step_size=0.00001,
+    )
+    assert qty == 0.0

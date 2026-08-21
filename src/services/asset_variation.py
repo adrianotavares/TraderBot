@@ -38,6 +38,42 @@ def _format_price_usd(price: float) -> str:
     return f"{formatted} usd"
 
 
+def format_qty(quantity: float) -> str:
+    formatted = f"{quantity:.8f}".rstrip("0").rstrip(".")
+    return formatted or "0"
+
+
+def unrealized_pnl_pct(mark_price: float, last_buy_price: float) -> Optional[float]:
+    if mark_price <= 0 or last_buy_price <= 0:
+        return None
+    return ((mark_price - last_buy_price) / last_buy_price) * 100
+
+
+def format_pnl_pct_label(pnl_pct: Optional[float]) -> str:
+    if pnl_pct is None:
+        return "n/d"
+    sign = "+" if pnl_pct > 0 else ""
+    return f"{sign}{pnl_pct:.2f}%"
+
+
+def format_held_position_label(
+    stock_code: str,
+    quantity: float,
+    mark_price: float,
+    last_buy_price: float,
+) -> str:
+    value_usd = quantity * mark_price if mark_price > 0 else 0.0
+    pnl_pct = unrealized_pnl_pct(mark_price, last_buy_price)
+    if value_usd >= 1:
+        value_str = f"{value_usd:.2f}"
+    else:
+        value_str = f"{value_usd:.4f}".rstrip("0").rstrip(".") or "0"
+    return (
+        f"Comprado, {format_qty(quantity)} {stock_code}, "
+        f"{value_str} usd, {format_pnl_pct_label(pnl_pct)}"
+    )
+
+
 def format_variation_message(
     stock_code: str, variation_pct: float, candle_period: str, close_price: float
 ) -> str:
@@ -45,7 +81,7 @@ def format_variation_message(
     abs_pct = abs(variation_pct)
     price = _format_price_usd(close_price)
     if variation_pct > 0:
-        return f"{stock_code} subiu {abs_pct:.2f}% nas últimas {period} - {price}"
+        return f"{stock_code} subiu {abs_pct:.2f}% nas últimas {period} ({price})"
     if variation_pct < 0:
-        return f"{stock_code} caiu {abs_pct:.2f}% nas últimas {period} - {price}"
-    return f"{stock_code} manteve o preço nas últimas {period} - {price}"
+        return f"{stock_code} caiu {abs_pct:.2f}% nas últimas {period} ({price})"
+    return f"{stock_code} manteve o preço nas últimas {period} ({price})"

@@ -1,31 +1,42 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
-from modules.logging_setup import setup_logging
+from modules.logging_setup import log_event, setup_logging
 
 setup_logging()
+
+
+def getOrderStatus(order_status):
+    status_translation = {
+        "NEW": "ABERTA",
+        "PARTIALLY_FILLED": "PARCIALMENTE EXECUTADA",
+        "FILLED": "EXECUTADA",
+        "CANCELED": "CANCELADA",
+        "EXPIRED": "EXPIRADA",
+    }
+    return status_translation.get(order_status, "ERRO")
+
 
 # Printa e cria um log de ordem de compra ou venda.
 # a partir do objeto retornado pela API da Binance
 def createLogOrder(order):
-    # Extraindo as informações necessárias
-    side = order['side']
-    type = order['type']
-    quantity = order['executedQty']
-    asset = order['symbol']
-    total_value = order['cummulativeQuoteQty']
-    timestamp = order['transactTime']
-    status = order['status']
-    price = order['price']
+    side = order["side"]
+    type = order["type"]
+    quantity = order["executedQty"]
+    asset = order["symbol"]
+    total_value = order["cummulativeQuoteQty"]
+    timestamp = order["transactTime"]
+    status = order["status"]
+    price = order["price"]
 
-    price_per_unit = order.get('fills', [{}])[0].get('price', '-') if order.get('fills') else '-'
-    currency = order.get('fills', [{}])[0].get('commissionAsset', '-') if order.get('fills') else '-'
+    fills = order.get("fills") or [{}]
+    price_per_unit = fills[0].get("price", "-")
+    currency = fills[0].get("commissionAsset", "-")
 
+    datetime_transact = datetime.fromtimestamp(
+        timestamp / 1000, tz=timezone.utc
+    ).strftime("(%H:%M:%S) %Y-%m-%d")
 
-    # Convertendo timestamp para data/hora legível
-    datetime_transact = datetime.utcfromtimestamp(timestamp / 1000).strftime('(%H:%M:%S) %Y-%m-%d')
-
-    # Criando as mensagens para log
     log_message = (
         "\n--------------------\n"
         "ORDEM ENVIADA: \n"
@@ -45,7 +56,6 @@ def createLogOrder(order):
         "\n-----------------------------------------\n"
     )
 
-    # Criando as mensagens para print
     print_message = (
         "\n--------------------\n"
         "ORDEM ENVIADA: \n"
@@ -59,17 +69,35 @@ def createLogOrder(order):
         f"Valor em {currency}: {total_value}\n"
         f"Type: {type}\n"
         f"Data/Hora: {datetime_transact}\n"
-        # "\n"
-        # "Complete_order:\n"
-        # f"{order}"
         "\n-----------------------------------------\n"
     )
 
-    # Exibindo no console
     print(print_message)
-
-    # Registrando no log
     logging.info(log_message)
+
+    fill_price = None
+    try:
+        fill_price = float(price_per_unit)
+    except (TypeError, ValueError):
+        pass
+
+    log_event(
+        logging.INFO,
+        f"Ordem {getOrderStatus(status)}: {side} {asset}",
+        event="order_executed",
+        operation_code=asset,
+        side=side,
+        order_type=type,
+        status=status,
+        status_label=getOrderStatus(status),
+        quantity=float(quantity or 0),
+        price_sent=float(price or 0),
+        fill_price=fill_price,
+        total_quote=float(total_value or 0),
+        commission_asset=currency,
+        order_id=order.get("orderId"),
+        transact_time=datetime_transact,
+    )
 
 # # Exemplo de uso
 # if __name__ == "__main__":
@@ -101,16 +129,3 @@ def createLogOrder(order):
 #     }
 
 #     createLogOrder(order_sell)
-
-
-def getOrderStatus(order_status):
-    status_translation = {
-        "NEW": "ABERTA",
-        "PARTIALLY_FILLED": "PARCIALMENTE EXECUTADA",
-        "FILLED": "EXECUTADA",
-        "CANCELED": "CANCELADA",
-        "EXPIRED": "EXPIRADA"
-    }
-
-    return status_translation.get(order_status, "ERRO")
-    

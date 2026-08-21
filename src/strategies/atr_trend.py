@@ -3,6 +3,72 @@ import pandas as pd
 from indicators.atr import atr, compute_trailing_stop, compute_ut_position
 
 
+def _evaluate_atr_trend(
+    stock_data: pd.DataFrame,
+    atr_period: int,
+    atr_multiplier: float,
+    trend_sma_period: int,
+):
+    min_points = max(atr_period, trend_sma_period) + 5
+    if len(stock_data) < min_points:
+        return None
+
+    df = stock_data.copy()
+    for col in ("close_price", "high_price", "low_price"):
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df.dropna(subset=["close_price", "high_price", "low_price"], inplace=True)
+
+    if len(df) < min_points:
+        return None
+
+    close = df["close_price"]
+    atr_values = atr(df, window=atr_period)
+    sma = close.rolling(window=trend_sma_period).mean()
+
+    if pd.isna(atr_values.iloc[-1]) or pd.isna(sma.iloc[-1]):
+        return None
+
+    trailing_stop = compute_trailing_stop(close, atr_values, atr_multiplier)
+    position = compute_ut_position(close, trailing_stop)
+
+    last_pos = position[-1]
+    if last_pos == 0:
+        return None
+
+    last_close = float(close.iloc[-1])
+    last_sma = float(sma.iloc[-1])
+    last_stop = float(trailing_stop.iloc[-1])
+    trailing_long = last_pos == 1
+    decision = bool(trailing_long and last_close > last_sma)
+
+    snapshot = {
+        "strategy": "ATR Trend Following",
+        "atr_period": atr_period,
+        "atr_multiplier": atr_multiplier,
+        "trend_sma_period": trend_sma_period,
+        "trailing_stop": round(last_stop, 4),
+        "sma": round(last_sma, 4),
+        "close": round(last_close, 4),
+        "trailing": "long" if trailing_long else "short",
+        "decision": "Comprar" if decision else "Vender",
+    }
+    return decision, snapshot
+
+
+def get_atr_trend_snapshot(
+    stock_data: pd.DataFrame,
+    atr_period: int = 14,
+    atr_multiplier: float = 2.5,
+    trend_sma_period: int = 200,
+) -> dict | None:
+    result = _evaluate_atr_trend(
+        stock_data, atr_period, atr_multiplier, trend_sma_period
+    )
+    if result is None:
+        return None
+    return result[1]
+
+
 def getAtrTrendStrategy(
     stock_data: pd.DataFrame,
     atr_period: int = 14,
@@ -26,55 +92,28 @@ def getAtrTrendStrategy(
             )
         return None
 
-    df = stock_data.copy()
-    for col in ("close_price", "high_price", "low_price"):
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-    df.dropna(subset=["close_price", "high_price", "low_price"], inplace=True)
-
-    if len(df) < min_points:
-        if verbose:
-            print(f"Dados insuficientes apos limpeza ({len(df)}).")
-        return None
-
-    close = df["close_price"]
-    atr_values = atr(df, window=atr_period)
-    sma = close.rolling(window=trend_sma_period).mean()
-
-    if pd.isna(atr_values.iloc[-1]) or pd.isna(sma.iloc[-1]):
-        if verbose:
-            print("Indicadores ainda nao calculaveis (NaN no ultimo candle).")
-        return None
-
-    trailing_stop = compute_trailing_stop(close, atr_values, atr_multiplier)
-    position = compute_ut_position(close, trailing_stop)
-
-    last_pos = position[-1]
-    last_close = close.iloc[-1]
-    last_sma = sma.iloc[-1]
-    last_stop = trailing_stop.iloc[-1]
-
-    if last_pos == 0:
+    result = _evaluate_atr_trend(
+        stock_data, atr_period, atr_multiplier, trend_sma_period
+    )
+    if result is None:
         if verbose:
             print("Estrategia ATR Trend: sem sinal definido ainda.")
         return None
 
-    trailing_long = last_pos == 1
-    above_sma = last_close > last_sma
-
-    if trailing_long and above_sma:
-        decision = True
-    else:
-        decision = False
-
+    decision, snapshot = result
     if verbose:
         print("-------")
-        print("Estrategia: ATR Trend Following")
-        print(f" | ATR({atr_period}) x {atr_multiplier}: stop={last_stop:.4f}")
-        print(f" | SMA({trend_sma_period}): {last_sma:.4f} | Close: {last_close:.4f}")
-        print(f" | Trailing: {'long' if trailing_long else 'short'}")
+        print(f"Estrategia: {snapshot['strategy']}")
         print(
-            f' | Decisao: {"Comprar" if decision else "Vender"}'
+            f" | ATR({atr_period}) x {atr_multiplier}: "
+            f"stop={snapshot['trailing_stop']:.4f}"
         )
+        print(
+            f" | SMA({trend_sma_period}): {snapshot['sma']:.4f} | "
+            f"Close: {snapshot['close']:.4f}"
+        )
+        print(f" | Trailing: {snapshot['trailing']}")
+        print(f" | Decisao: {snapshot['decision']}")
         print("-------")
 
     return decision

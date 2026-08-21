@@ -8,9 +8,16 @@ from modules.StrategyRunner import StrategyRunner
 from modules.alerts import send_alert
 from modules.logging_setup import log_event
 from persistence.state_store import BotState
-from services.asset_variation import compute_candle_variation, format_variation_message
+from services.asset_variation import (
+    compute_candle_variation,
+    format_held_position_label,
+    format_variation_message,
+    unrealized_pnl_pct,
+)
+from services.market_data import MarketDataService
 from services.order_executor import OrderExecutor
 from services.regime_router import can_run_grid, resolve_regime_action
+from strategies.atr_trend import get_atr_trend_snapshot
 
 
 class TradingEngine:
@@ -117,10 +124,110 @@ class TradingEngine:
             breakout_cooldown_candles=self.state.breakout_cooldown_candles,
         )
 
+    def _decision_label(self, decision) -> str:
+        if decision is True:
+            return "Comprar"
+        if decision is False:
+            return "Vender"
+        return "Inconclusiva"
+
+    def _current_mark_price(self) -> float:
+        data = self.bot.stock_data
+        if data is None or len(data) == 0:
+            return 0.0
+        return float(data["close_price"].iloc[-1])
+
+    def _held_position_label(self) -> str:
+        return format_held_position_label(
+            self.bot.stock_code,
+            float(self.bot.last_stock_account_balance),
+            self._current_mark_price(),
+            float(self.bot.last_buy_price or 0),
+        )
+
+    def _get_strategy_snapshot(self) -> dict | None:
+        if getattr(self.bot.main_strategy, "__name__", "") == "getAtrTrendStrategy":
+            return get_atr_trend_snapshot(
+                self.bot.stock_data,
+                **(self.bot.main_strategy_args or {}),
+            )
+        return None
+
+    def _log_cycle_summary(
+        self,
+        *,
+        regime,
+        action: str,
+        final_action: str,
+        variation: dict | None = None,
+    ):
+        strategy = self._get_strategy_snapshot()
+        in_position = bool(self.bot.actual_trade_position)
+        payload = {
+            "operation_code": self.bot.operation_code,
+            "stock_code": self.bot.stock_code,
+            "event": "cycle_summary",
+            "position": "Comprado" if in_position else "Vendido",
+            "balance": round(self.bot.last_stock_account_balance, 8),
+            "quote_balance": round(self._quote_balance(), 4),
+            "last_buy_price": round(self.bot.last_buy_price, 4),
+            "last_sell_price": round(self.bot.last_sell_price, 4),
+            "decision": self._decision_label(self.bot.last_trade_decision),
+            "final_action": final_action,
+            "time_to_sleep_min": round(self.bot.time_to_sleep / 60, 2),
+            "active_mode": self.state.active_mode,
+            "regime_action": action,
+        }
+        if in_position:
+            mark_price = self._current_mark_price()
+            quantity = float(self.bot.last_stock_account_balance)
+            pnl_pct = unrealized_pnl_pct(mark_price, float(self.bot.last_buy_price or 0))
+            payload["position_qty"] = round(quantity, 8)
+            payload["mark_price"] = round(mark_price, 4)
+            payload["position_value_usd"] = round(quantity * mark_price, 4)
+            if pnl_pct is not None:
+                payload["unrealized_pnl_pct"] = round(pnl_pct, 2)
+        if variation:
+            payload.update(
+                {
+                    "variation_pct": variation.get("variation_pct"),
+                    "variation_direction": variation.get("direction"),
+                    "close_price": variation.get("close_price"),
+                    "candle_period": self.bot.candle_period,
+                }
+            )
+        if regime:
+            payload.update(
+                {
+                    "regime": regime.regime,
+                    "regime_score": regime.score,
+                    "adx": round(regime.adx_value, 2),
+                    "rsi": round(regime.rsi_value, 2),
+                }
+            )
+        if strategy:
+            payload["strategy"] = strategy
+
+        log_event(
+            logging.INFO,
+            f"Ciclo {self.bot.operation_code}: {final_action}",
+            **payload,
+        )
+
+    def _log_order_blocked(self, side: str, reason: str):
+        log_event(
+            logging.WARNING,
+            f"Order blocked for {self.bot.operation_code}: {reason}",
+            operation_code=self.bot.operation_code,
+            event="order_blocked",
+            side=side,
+            reason=reason,
+        )
+
     def _log_asset_variation(self):
         variation = compute_candle_variation(self.bot.stock_data)
         if not variation:
-            return
+            return None
         message = format_variation_message(
             self.bot.stock_code,
             variation["variation_pct"],
@@ -137,6 +244,7 @@ class TradingEngine:
             **variation,
         )
         print(f" - {message}")
+        return variation
 
     def _log_regime_detected(self, regime, breakout, action: str):
         payload = {
@@ -240,7 +348,12 @@ class TradingEngine:
         )
         self.bot.cancelAllOrders()
         time.sleep(2)
-        order = self.bot.sellMarketOrder()
+        try:
+            order = self.bot.sellMarketOrder()
+        except BinanceAPIException as e:
+            self.risk_manager.record_api_error()
+            self._log_order_blocked("SELL", str(e))
+            return False
         if OrderExecutor.is_filled(order):
             self.bot.actual_trade_position = False
             self.bot.take_profit_index = 0
@@ -259,7 +372,26 @@ class TradingEngine:
             return False
 
         quantity, tp_pct, new_index = result
-        order = self.bot.sellMarketOrder(quantity=quantity)
+        close_price = float(self.bot.stock_data["close_price"].iloc[-1])
+        quantity = MarketDataService.size_quantity_for_filters(
+            quantity=quantity,
+            price=close_price,
+            step_size=self.bot.step_size,
+            min_notional=self.bot.min_notional,
+            bump_to_min_notional=False,
+        )
+        if quantity <= 0:
+            self._log_order_blocked(
+                "SELL",
+                "take profit notional below exchange minimum",
+            )
+            return False
+        try:
+            order = self.bot.sellMarketOrder(quantity=quantity)
+        except BinanceAPIException as e:
+            self.risk_manager.record_api_error()
+            self._log_order_blocked("SELL", str(e))
+            return False
         if OrderExecutor.is_filled(order):
             self.bot.take_profit_index = new_index
             self.state_store.log_order(self.bot.operation_code, order)
@@ -278,13 +410,17 @@ class TradingEngine:
 
     def _resolve_quantity(self, side: str) -> float:
         close_price = float(self.bot.stock_data["close_price"].iloc[-1])
+        # Limit buys can sit ~0.2% below last close; size against that so NOTIONAL still holds.
+        sizing_price = close_price * (0.998 if side == "BUY" else 0.995)
         return self.risk_manager.compute_trade_quantity(
             self.bot.traded_quantity,
             self.bot.traded_percentage,
             self.bot.last_stock_account_balance,
             self._quote_balance(),
-            close_price,
+            sizing_price,
             side,
+            min_notional=self.bot.min_notional,
+            step_size=self.bot.step_size,
         )
 
     def _validate_before_order(self, side: str, quantity: float, price: float) -> bool:
@@ -302,6 +438,7 @@ class TradingEngine:
             logging.warning(
                 "Order blocked for %s: %s", self.bot.operation_code, reason
             )
+            self._log_order_blocked(side, reason)
             return False
         if self.risk_manager.should_stop_trading_daily_loss():
             logging.warning("Daily loss limit reached for %s", self.bot.operation_code)
@@ -311,11 +448,16 @@ class TradingEngine:
     def _place_buy(self, price=0):
         quantity = self._resolve_quantity("BUY")
         close_price = float(self.bot.stock_data["close_price"].iloc[-1])
-        if not self._validate_before_order("BUY", quantity, close_price):
+        if not self._validate_before_order("BUY", quantity, close_price * 0.998):
             return False
-        order = self.order_executor.buy_limited(
-            self.bot.stock_data, quantity, price
-        )
+        try:
+            order = self.order_executor.buy_limited(
+                self.bot.stock_data, quantity, price
+            )
+        except BinanceAPIException as e:
+            self.risk_manager.record_api_error()
+            self._log_order_blocked("BUY", str(e))
+            return False
         if OrderExecutor.is_filled(order):
             self.bot.actual_trade_position = True
             self.state_store.log_order(self.bot.operation_code, order)
@@ -326,18 +468,29 @@ class TradingEngine:
         return order
 
     def _place_sell(self, price=0):
-        quantity = self.bot.last_stock_account_balance
         close_price = float(self.bot.stock_data["close_price"].iloc[-1])
-        if not self._validate_before_order("SELL", quantity, close_price):
-            return False
-        order = self.order_executor.sell_limited(
-            self.bot.stock_data,
-            quantity,
-            self.bot.last_buy_price,
-            self.bot.acceptable_loss_percentage / 100,
-            self.bot.getMinimumPriceToSell,
-            price,
+        quantity = MarketDataService.size_quantity_for_filters(
+            quantity=self.bot.last_stock_account_balance,
+            price=close_price * 0.995,
+            step_size=self.bot.step_size,
+            min_notional=self.bot.min_notional,
+            bump_to_min_notional=False,
         )
+        if not self._validate_before_order("SELL", quantity, close_price * 0.995):
+            return False
+        try:
+            order = self.order_executor.sell_limited(
+                self.bot.stock_data,
+                quantity,
+                self.bot.last_buy_price,
+                self.bot.acceptable_loss_percentage / 100,
+                self.bot.getMinimumPriceToSell,
+                price,
+            )
+        except BinanceAPIException as e:
+            self.risk_manager.record_api_error()
+            self._log_order_blocked("SELL", str(e))
+            return False
         if OrderExecutor.is_filled(order):
             self.bot.actual_trade_position = False
             self.bot.take_profit_index = 0
@@ -364,14 +517,32 @@ class TradingEngine:
         print("Detalhes:")
         print(f' - Posição atual: {"Comprado" if self.bot.actual_trade_position else "Vendido"}')
         print(f" - Balanço atual: {self.bot.last_stock_account_balance:.4f} ({self.bot.stock_code})")
-        self._log_asset_variation()
+        variation = self._log_asset_variation()
 
         if self._handle_stop_loss():
             print("\nSTOP LOSS finalizado.\n")
+            self.bot.time_to_sleep = self.bot.time_to_trade
+            self._sync_bot_to_state()
+            self._log_cycle_summary(
+                regime=None,
+                action="stop_loss",
+                final_action="Stop loss",
+                variation=variation,
+            )
+            print("------------------------------------------------")
             return
 
         if self.bot.actual_trade_position and self._handle_take_profit():
             print("\nTAKE PROFIT finalizado.\n")
+            self.bot.time_to_sleep = self.bot.delay_after_order
+            self._sync_bot_to_state()
+            self._log_cycle_summary(
+                regime=None,
+                action="take_profit",
+                final_action="Take profit",
+                variation=variation,
+            )
+            print("------------------------------------------------")
             return
 
         regime = self._check_regime()
@@ -434,6 +605,12 @@ class TradingEngine:
                 self.state.breakout_cooldown_candles -= 1
             self.bot.time_to_sleep = self.bot.time_to_trade
             self._sync_bot_to_state()
+            self._log_cycle_summary(
+                regime=regime,
+                action=action,
+                final_action="Regime pause",
+                variation=variation,
+            )
             print("------------------------------------------------")
             return
         elif self.state.active_mode == "grid":
@@ -486,6 +663,7 @@ class TradingEngine:
             self.update_all_data()
             self.bot.printStock()
             self.bot.time_to_sleep = self.bot.delay_after_order
+            final_action = "Comprar"
 
         elif (
             self.bot.actual_trade_position
@@ -498,12 +676,22 @@ class TradingEngine:
             self.update_all_data()
             self.bot.printStock()
             self.bot.time_to_sleep = self.bot.delay_after_order
+            final_action = "Vender"
 
         else:
-            print(
-                f'Ação final: Manter posição ({"Comprado" if self.bot.actual_trade_position else "Vendido"})'
-            )
+            if self.bot.actual_trade_position:
+                position_label = self._held_position_label()
+            else:
+                position_label = "Vendido"
+            print(f"Ação final: Manter posição ({position_label})")
             self.bot.time_to_sleep = self.bot.time_to_trade
+            final_action = f"Manter posição ({position_label})"
 
         self._sync_bot_to_state()
+        self._log_cycle_summary(
+            regime=regime,
+            action=action,
+            final_action=final_action,
+            variation=variation,
+        )
         print("------------------------------------------------")
