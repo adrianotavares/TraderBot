@@ -84,8 +84,42 @@ h1 {
 
 .subtitle {
     color: var(--md-on-surface-variant);
-    margin: 0 0 20px;
+    margin: 0 0 16px;
     font-size: 0.95rem;
+}
+
+.portfolio-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 32px;
+    margin: 0 0 16px;
+}
+
+.portfolio-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.portfolio-label {
+    font-size: 0.8rem;
+    color: var(--md-on-surface-variant);
+}
+
+.portfolio-value {
+    font-size: 1.75rem;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+}
+
+.portfolio-value.up {
+    color: var(--md-up);
+}
+
+.portfolio-value.down {
+    color: var(--md-down);
 }
 
 .toolbar {

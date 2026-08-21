@@ -129,7 +129,8 @@ class MarketDataService:
     def is_position_open(self, balance: float, step_size: float) -> bool:
         return balance >= step_size
 
-    def get_last_fill_price(self, orders: list, side: str) -> float:
+    @staticmethod
+    def get_last_fill_price(orders: list, side: str) -> float:
         filled = [o for o in orders if o["side"] == side and o["status"] == "FILLED"]
         if not filled:
             return 0.0

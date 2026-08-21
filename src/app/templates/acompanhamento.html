@@ -6,6 +6,17 @@
     Evolução dos ativos no candle de {{ config.CANDLE_PERIOD }}
 </p>
 
+<div class="portfolio-summary" id="portfolio-summary">
+    <div class="portfolio-metric">
+        <span class="portfolio-label">Saldo total</span>
+        <span class="portfolio-value" id="portfolio-total">—</span>
+    </div>
+    <div class="portfolio-metric">
+        <span class="portfolio-label">P&amp;L total</span>
+        <span class="portfolio-value" id="portfolio-pnl">—</span>
+    </div>
+</div>
+
 <div class="toolbar">
     <div class="chips" id="asset-chips"></div>
     <button type="button" class="icon-btn" id="refresh-btn">
@@ -167,12 +178,62 @@
         }
     }
 
-    document.getElementById("refresh-btn").onclick = loadLogs;
+    function formatUsd(value, withSign) {
+        const formatted = Number(value).toLocaleString("pt-BR", {
+            style: "currency",
+            currency: "USD",
+        });
+        if (withSign && value > 0) {
+            return `+${formatted}`;
+        }
+        return formatted;
+    }
+
+    function renderPnl(pnlUsd, pnlPct) {
+        const pnlEl = document.getElementById("portfolio-pnl");
+        pnlEl.classList.remove("up", "down");
+        if (pnlUsd == null) {
+            pnlEl.textContent = "—";
+            return;
+        }
+        let text = formatUsd(pnlUsd, true);
+        if (pnlPct != null) {
+            const sign = pnlPct > 0 ? "+" : "";
+            text += ` (${sign}${Number(pnlPct).toFixed(2)}%)`;
+        }
+        pnlEl.textContent = text;
+        if (pnlUsd > 0) pnlEl.classList.add("up");
+        if (pnlUsd < 0) pnlEl.classList.add("down");
+    }
+
+    async function loadPortfolio() {
+        const totalEl = document.getElementById("portfolio-total");
+        const pnlEl = document.getElementById("portfolio-pnl");
+        try {
+            const response = await fetch("/api/portfolio");
+            const data = await response.json();
+            if (!response.ok || data.total_usd == null) {
+                throw new Error(data.error || "bad status");
+            }
+            totalEl.textContent = formatUsd(data.total_usd, false);
+            renderPnl(data.total_pnl_usd, data.total_pnl_pct);
+        } catch (err) {
+            totalEl.textContent = "Indisponível";
+            pnlEl.classList.remove("up", "down");
+            pnlEl.textContent = "Indisponível";
+        }
+    }
+
+    async function refreshAll() {
+        await Promise.all([loadLogs(), loadPortfolio()]);
+    }
+
+    document.getElementById("refresh-btn").onclick = refreshAll;
     renderChips();
-    loadLogs();
+    refreshAll();
     setInterval(() => {
         if (document.hidden) return;
-        loadLogs();
+        refreshAll();
     }, REFRESH_MS);
 </script>
 {% endblock %}
