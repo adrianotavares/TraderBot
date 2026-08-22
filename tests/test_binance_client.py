@@ -1,6 +1,10 @@
 from unittest.mock import MagicMock, patch
 
+import threading
+import time
+
 import requests
+from binance.client import Client
 
 from modules.BinanceClient import BinanceClient
 
@@ -70,3 +74,39 @@ def test_sync_retries_connection_error_then_succeeds():
     assert client.timestamp_offset == 150
     assert client.get_server_time.call_count == 2
     client._reset_session.assert_called_once()
+
+
+def test_signed_requests_are_serialized():
+    client = _make_client(
+        last_sync_time=int(time.time() * 1000),
+        sync_interval=10**12,
+        timestamp_offset=0,
+        _request_lock=threading.RLock(),
+    )
+    in_flight = 0
+    max_in_flight = 0
+    guard = threading.Lock()
+
+    def fake_request(*_args, **_kwargs):
+        nonlocal in_flight, max_in_flight
+        with guard:
+            in_flight += 1
+            max_in_flight = max(max_in_flight, in_flight)
+        time.sleep(0.05)
+        with guard:
+            in_flight -= 1
+        return {"ok": True}
+
+    with patch.object(Client, "_request", fake_request):
+        threads = [
+            threading.Thread(
+                target=lambda: client._request("GET", "/api/v3/account", True, data={})
+            )
+            for _ in range(4)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+    assert max_in_flight == 1

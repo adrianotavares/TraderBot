@@ -112,7 +112,7 @@ class RegimeConfig(BaseModel):
     touch_tolerance_pct: float = 0.3
     min_lateral_signals: int = 3
     min_candles: int = 60
-    action_in_lateral: Literal["pause", "grid"] = "pause"
+    action_in_lateral: Literal["pause", "grid", "hold_cash"] = "pause"
 
 
 class GridConfig(BaseModel):

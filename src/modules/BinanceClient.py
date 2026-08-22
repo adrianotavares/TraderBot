@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 
 import requests
@@ -44,6 +45,7 @@ class BinanceClient(Client):
         )
         self.max_retries = max_retries
         self.retry_backoff = retry_backoff
+        self._request_lock = threading.RLock()
         self._configure_session_retries()
 
         self.sync = sync
@@ -129,6 +131,14 @@ class BinanceClient(Client):
         return False
 
     def _request(self, method, uri: str, signed: bool, force_params: bool = False, **kwargs):
+        lock = getattr(self, "_request_lock", None)
+        if lock is None:
+            lock = threading.RLock()
+            self._request_lock = lock
+        with lock:
+            return self._request_unlocked(method, uri, signed, force_params, **kwargs)
+
+    def _request_unlocked(self, method, uri: str, signed: bool, force_params: bool = False, **kwargs):
         if signed:
             current_time = int(time.time() * 1000)
             if self.sync and (

@@ -88,6 +88,14 @@ class StateStore:
                     key TEXT PRIMARY KEY,
                     value TEXT
                 );
+                CREATE TABLE IF NOT EXISTS daily_risk (
+                    day_key TEXT NOT NULL,
+                    operation_code TEXT NOT NULL,
+                    trades INTEGER NOT NULL DEFAULT 0,
+                    grid_trades INTEGER NOT NULL DEFAULT 0,
+                    loss_usdt REAL NOT NULL DEFAULT 0,
+                    PRIMARY KEY (day_key, operation_code)
+                );
                 """
             )
             self._migrate(conn)
@@ -282,6 +290,76 @@ class StateStore:
                 """,
                 (key, value),
             )
+
+    def load_daily_risk(self, day_key: str, operation_code: str) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT trades, grid_trades, loss_usdt
+                FROM daily_risk
+                WHERE day_key = ? AND operation_code = ?
+                """,
+                (day_key, operation_code),
+            ).fetchone()
+        if not row:
+            return {"trades": 0, "grid_trades": 0, "loss_usdt": 0.0}
+        return {
+            "trades": int(row["trades"] or 0),
+            "grid_trades": int(row["grid_trades"] or 0),
+            "loss_usdt": float(row["loss_usdt"] or 0),
+        }
+
+    def save_daily_risk(
+        self,
+        day_key: str,
+        operation_code: str,
+        trades: int,
+        grid_trades: int,
+        loss_usdt: float,
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO daily_risk (
+                    day_key, operation_code, trades, grid_trades, loss_usdt
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(day_key, operation_code) DO UPDATE SET
+                    trades = excluded.trades,
+                    grid_trades = excluded.grid_trades,
+                    loss_usdt = excluded.loss_usdt
+                """,
+                (day_key, operation_code, int(trades), int(grid_trades), float(loss_usdt)),
+            )
+
+    def derived_daily_risk(self, day_key: str, operation_code: str) -> dict:
+        """Counts from orders_log / trade_outcomes for the UTC day (YYYY-MM-DD)."""
+        with self._connect() as conn:
+            trades_row = conn.execute(
+                """
+                SELECT COUNT(*) AS n FROM orders_log
+                WHERE operation_code = ?
+                  AND status = 'FILLED'
+                  AND substr(created_at, 1, 10) = ?
+                """,
+                (operation_code, day_key),
+            ).fetchone()
+            loss_row = conn.execute(
+                """
+                SELECT COALESCE(
+                    SUM(CASE WHEN pnl_usd < 0 THEN -pnl_usd ELSE 0 END),
+                    0
+                ) AS loss
+                FROM trade_outcomes
+                WHERE operation_code = ?
+                  AND filled = 1
+                  AND substr(occurred_at, 1, 10) = ?
+                """,
+                (operation_code, day_key),
+            ).fetchone()
+        return {
+            "trades": int(trades_row["n"] or 0),
+            "loss_usdt": float(loss_row["loss"] or 0),
+        }
 
     def record_outcome(self, outcome: dict) -> bool:
         occurred_at = outcome.get("occurred_at") or datetime.now(timezone.utc).isoformat()

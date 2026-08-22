@@ -2,7 +2,10 @@
 {% block title %}Configuração{% endblock %}
 {% block content %}
 <h1>Configuração</h1>
-<p class="subtitle">Alterações são gravadas no YAML. Reinicie o bot para aplicar.</p>
+<p class="subtitle">
+    Risco, timing, regime e grid valem no próximo ciclo. Troca de par ou
+    estratégia principal exige restart do bot.
+</p>
 
 <form id="config-form" class="form-card">
     <div class="field">
@@ -100,7 +103,7 @@
     }
 
     async function carregarConfiguracao() {
-        const response = await fetch("/get-config");
+        const response = await traderbotFetch("/get-config");
         const data = await response.json();
 
         document.getElementById("MAIN_STRATEGY").value = data.MAIN_STRATEGY;
@@ -176,7 +179,7 @@
             stocks_traded_list: buildStocksTradedList(),
         };
 
-        const response = await fetch("/update-config", {
+        const response = await traderbotFetch("/update-config", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(jsonData),
@@ -188,7 +191,7 @@
             return;
         }
 
-        showToast("Configuração salva. Reinicie o bot para aplicar.");
+        showToast("Configuração salva. Limites valem no próximo ciclo; par/estratégia exigem restart.");
         carregarConfiguracao();
     };
 

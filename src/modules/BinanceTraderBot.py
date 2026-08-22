@@ -5,6 +5,7 @@ from datetime import datetime
 from binance.exceptions import BinanceAPIException
 
 from core.trading_engine import TradingEngine
+from core.state_fields import PersistedTradeFields
 from modules.BinanceClient import BinanceClient
 from modules.alerts import send_alert
 from persistence.state_store import StateStore
@@ -14,6 +15,7 @@ from services.risk_manager import RiskManager
 from services.regime_detector import RegimeDetector
 from services.grid_spot import GridSpotManager
 from services.breakout_detector import BreakoutDetector
+from strategies.registry import resolve_strategy
 
 
 def _validate_api_keys(api_key: str, secret_key: str):
@@ -53,15 +55,11 @@ def _validate_trading_permissions(client, testnet: bool):
         logging.warning("API key has IP restriction enabled.")
 
 
-class BinanceTraderBot:
+class BinanceTraderBot(PersistedTradeFields):
     """Facade delegating to TradingEngine for backward compatibility."""
 
-    last_trade_decision = None
-    last_buy_price = 0
-    last_sell_price = 0
     open_orders = []
     partial_quantity_discount = 0
-    take_profit_index = 0
 
     def __init__(
         self,
@@ -156,6 +154,7 @@ class BinanceTraderBot:
             self.tick_size,
             self.step_size,
         )
+        self.state_store = state_store or StateStore()
         self.risk_manager = RiskManager(
             acceptable_loss_pct=acceptable_loss_percentage,
             stop_loss_pct=stop_loss_percentage,
@@ -170,8 +169,9 @@ class BinanceTraderBot:
             circuit_breaker_pause_seconds=risk_config.get(
                 "circuit_breaker_pause_seconds", 300
             ),
+            state_store=self.state_store,
+            operation_code=operation_code,
         )
-        self.state_store = state_store or StateStore()
         self.alerts_config = alerts_config
         self.regime_detector = RegimeDetector(**regime_config) if regime_config else RegimeDetector(enabled=False)
         grid_kwargs = {k: v for k, v in grid_config.items() if k != "max_open_orders"}
@@ -285,6 +285,64 @@ class BinanceTraderBot:
         has, partial = self.order_executor.has_open_sell_order()
         self.partial_quantity_discount = partial
         return has
+
+    def apply_soft_settings(self, settings):
+        """Apply YAML fields that do not require recreating the bot."""
+        asset = next(
+            (
+                item
+                for item in settings.assets
+                if item.operation_code == self.operation_code
+            ),
+            None,
+        )
+        if asset is not None:
+            self.traded_quantity = asset.traded_quantity
+            self.traded_percentage = asset.traded_percentage
+            self.breakout_price = asset.breakout_price
+            self.engine.breakout_price = asset.breakout_price
+
+        risk = settings.risk
+        self.time_to_trade = settings.timing.tempo_entre_trades
+        self.delay_after_order = settings.timing.delay_entre_ordens
+        self.acceptable_loss_percentage = risk.acceptable_loss_pct
+        self.stop_loss_percentage = risk.stop_loss_pct
+        self.take_profit_at_percentage = [level.at for level in risk.take_profit]
+        self.take_profit_amount_percentage = [level.amount for level in risk.take_profit]
+        self.fallback_activated = settings.strategy.fallback_enabled
+        self.main_strategy_args = dict(settings.strategy.main_args)
+        self.fallback_strategy = resolve_strategy(settings.strategy.fallback)
+        self.fallback_strategy_args = dict(settings.strategy.fallback_args)
+
+        self.risk_manager.apply_config(
+            acceptable_loss_pct=risk.acceptable_loss_pct,
+            stop_loss_pct=risk.stop_loss_pct,
+            take_profit_at=self.take_profit_at_percentage,
+            take_profit_amount=self.take_profit_amount_percentage,
+            max_daily_loss_usdt=risk.max_daily_loss_usdt,
+            max_trades_per_day=risk.max_trades_per_day,
+            max_open_orders=risk.max_open_orders,
+            max_grid_trades_per_day=risk.max_grid_trades_per_day,
+            max_grid_open_orders=settings.grid.max_open_orders,
+            circuit_breaker_errors=settings.operation.circuit_breaker_errors,
+            circuit_breaker_pause_seconds=settings.operation.circuit_breaker_pause_seconds,
+        )
+
+        alerts = settings.alerts.model_dump()
+        self.alerts_config = alerts
+        self.engine.alerts_config = alerts
+
+        self.regime_detector = RegimeDetector(**settings.regime.model_dump())
+        grid_kwargs = {
+            key: value
+            for key, value in settings.grid.model_dump().items()
+            if key != "max_open_orders"
+        }
+        self.grid_manager = GridSpotManager(**grid_kwargs)
+        self.breakout_detector = BreakoutDetector(**settings.breakout.model_dump())
+        self.engine.regime_detector = self.regime_detector
+        self.engine.grid_manager = self.grid_manager
+        self.engine.breakout_detector = self.breakout_detector
 
     def execute(self):
         self.engine.execute()

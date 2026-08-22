@@ -99,16 +99,19 @@ def setup_logging(level=None):
     if _configured:
         return
 
-    os.makedirs(LOG_DIR, exist_ok=True)
+    log_dir = os.getenv("TRADERBOT_LOG_DIR") or LOG_DIR
+    log_file = os.path.join(log_dir, os.path.basename(LOG_FILE))
+    json_file = os.path.join(log_dir, os.path.basename(LOG_JSON_FILE))
+    os.makedirs(log_dir, exist_ok=True)
     log_level = level or getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
 
     root = logging.getLogger()
     root.setLevel(log_level)
 
-    text_handler = RotatingFileHandler(LOG_FILE, maxBytes=5_000_000, backupCount=5)
+    text_handler = RotatingFileHandler(log_file, maxBytes=5_000_000, backupCount=5)
     text_handler.setFormatter(logging.Formatter(LOG_FORMAT))
 
-    json_handler = RotatingFileHandler(LOG_JSON_FILE, maxBytes=5_000_000, backupCount=5)
+    json_handler = RotatingFileHandler(json_file, maxBytes=5_000_000, backupCount=5)
     json_handler.setFormatter(JsonFormatter())
 
     console = logging.StreamHandler()

@@ -1,9 +1,7 @@
 import logging
 from datetime import datetime, timezone
 
-from modules.logging_setup import log_event, setup_logging
-
-setup_logging()
+from modules.logging_setup import log_event
 
 
 def getOrderStatus(order_status):

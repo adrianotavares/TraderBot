@@ -44,6 +44,18 @@
             </nav>
         </header>
         <main>{% block content %}{% endblock %}</main>
+        <script>
+            window.TRADERBOT_TOKEN = {{ flask_token|default("", true)|tojson }};
+            window.traderbotFetch = function (url, options) {
+                options = options || {};
+                const headers = Object.assign({}, options.headers || {});
+                if (window.TRADERBOT_TOKEN) {
+                    headers["X-TraderBot-Token"] = window.TRADERBOT_TOKEN;
+                }
+                options.headers = headers;
+                return fetch(url, options);
+            };
+        </script>
         {% block scripts %}{% endblock %}
     </body>
 </html>

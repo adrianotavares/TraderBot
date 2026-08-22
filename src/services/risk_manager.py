@@ -20,6 +20,8 @@ class RiskManager:
         max_grid_open_orders: int = 10,
         circuit_breaker_errors: int = 5,
         circuit_breaker_pause_seconds: int = 300,
+        state_store=None,
+        operation_code: str = "",
     ):
         self.acceptable_loss_pct = acceptable_loss_pct / 100
         self.stop_loss_pct = stop_loss_pct / 100
@@ -32,12 +34,15 @@ class RiskManager:
         self.max_grid_open_orders = max_grid_open_orders
         self.circuit_breaker_errors = circuit_breaker_errors
         self.circuit_breaker_pause_seconds = circuit_breaker_pause_seconds
+        self._state_store = state_store
+        self._operation_code = operation_code
         self._consecutive_errors = 0
         self._circuit_open_until = 0.0
         self._daily_trades = 0
         self._daily_grid_trades = 0
         self._daily_loss_usdt = 0.0
         self._day_key = self._today_key()
+        self._hydrate_daily()
 
     def _today_key(self) -> str:
         return datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -49,6 +54,27 @@ class RiskManager:
             self._daily_trades = 0
             self._daily_grid_trades = 0
             self._daily_loss_usdt = 0.0
+
+    def _hydrate_daily(self):
+        if not self._state_store or not self._operation_code:
+            return
+        stored = self._state_store.load_daily_risk(self._day_key, self._operation_code)
+        derived = self._state_store.derived_daily_risk(self._day_key, self._operation_code)
+        self._daily_trades = max(stored["trades"], derived["trades"])
+        self._daily_grid_trades = stored["grid_trades"]
+        self._daily_loss_usdt = max(stored["loss_usdt"], derived["loss_usdt"])
+        self._persist_daily()
+
+    def _persist_daily(self):
+        if not self._state_store or not self._operation_code:
+            return
+        self._state_store.save_daily_risk(
+            self._day_key,
+            self._operation_code,
+            trades=self._daily_trades,
+            grid_trades=self._daily_grid_trades,
+            loss_usdt=self._daily_loss_usdt,
+        )
 
     def record_api_success(self):
         self._consecutive_errors = 0
@@ -128,6 +154,8 @@ class RiskManager:
 
         if self.is_circuit_open():
             return False, "circuit breaker is open"
+        if self.should_stop_trading_daily_loss():
+            return False, "daily loss limit reached"
         if self._daily_trades >= self.max_trades_per_day:
             return False, "max trades per day reached"
         if open_orders_count >= self.max_open_orders:
@@ -158,6 +186,8 @@ class RiskManager:
 
         if self.is_circuit_open():
             return False, "circuit breaker is open"
+        if self.should_stop_trading_daily_loss():
+            return False, "daily loss limit reached"
         if self._daily_grid_trades >= self.max_grid_trades_per_day:
             return False, "max grid trades per day reached"
         if open_orders_count >= self.max_grid_open_orders:
@@ -176,14 +206,45 @@ class RiskManager:
     def record_grid_trade(self):
         self._reset_daily_counters_if_needed()
         self._daily_grid_trades += 1
+        self._persist_daily()
 
     def record_trade_pnl(self, pnl_usdt: float):
         self._reset_daily_counters_if_needed()
         self._daily_trades += 1
-        if pnl_usdt < 0:
-            self._daily_loss_usdt += abs(pnl_usdt)
+        loss = float(pnl_usdt or 0)
+        if loss < 0:
+            self._daily_loss_usdt += abs(loss)
         if self._daily_loss_usdt >= self.max_daily_loss_usdt:
             logging.warning("Max daily loss reached: %.2f USDT", self._daily_loss_usdt)
+        self._persist_daily()
+
+    def apply_config(
+        self,
+        *,
+        acceptable_loss_pct: float,
+        stop_loss_pct: float,
+        take_profit_at: list,
+        take_profit_amount: list,
+        max_daily_loss_usdt: float,
+        max_trades_per_day: int,
+        max_open_orders: int,
+        max_grid_trades_per_day: int,
+        max_grid_open_orders: int,
+        circuit_breaker_errors: int,
+        circuit_breaker_pause_seconds: int,
+    ):
+        """Update limits without resetting daily counters."""
+        self.acceptable_loss_pct = acceptable_loss_pct / 100
+        self.stop_loss_pct = stop_loss_pct / 100
+        self.take_profit_at = take_profit_at
+        self.take_profit_amount = take_profit_amount
+        self.max_daily_loss_usdt = max_daily_loss_usdt
+        self.max_trades_per_day = max_trades_per_day
+        self.max_open_orders = max_open_orders
+        self.max_grid_trades_per_day = max_grid_trades_per_day
+        self.max_grid_open_orders = max_grid_open_orders
+        self.circuit_breaker_errors = circuit_breaker_errors
+        self.circuit_breaker_pause_seconds = circuit_breaker_pause_seconds
 
     def should_stop_trading_daily_loss(self) -> bool:
         self._reset_daily_counters_if_needed()

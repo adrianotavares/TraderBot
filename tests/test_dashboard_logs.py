@@ -53,6 +53,20 @@ def test_api_logs_returns_structured_events_only(tmp_path, monkeypatch):
     assert entry["rsi"] == 52.1
 
 
+def test_api_logs_requires_token_when_configured(tmp_path, monkeypatch):
+    monkeypatch.setenv("FLASK_TOKEN", "secret")
+    log_file = tmp_path / "trading_bot.json.log"
+    log_file.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr("modules.logging_setup.LOG_JSON_FILE", str(log_file))
+    client = app.test_client()
+    denied = client.get("/api/logs")
+    assert denied.status_code == 401
+    allowed = client.get("/api/logs", headers={"X-TraderBot-Token": "secret"})
+    assert allowed.status_code == 200
+    html = client.get("/")
+    assert html.status_code == 200
+
+
 def test_api_logs_filters_by_operation_code(tmp_path, monkeypatch):
     log_file = tmp_path / "trading_bot.json.log"
     log_file.write_text(

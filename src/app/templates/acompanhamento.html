@@ -165,7 +165,7 @@
         try {
             const params = new URLSearchParams({ limit: "200" });
             if (selectedOperation) params.set("operation_code", selectedOperation);
-            const response = await fetch(`/api/logs?${params.toString()}`);
+            const response = await traderbotFetch(`/api/logs?${params.toString()}`);
             if (!response.ok) {
                 throw new Error("bad status");
             }
@@ -210,7 +210,7 @@
         const totalEl = document.getElementById("portfolio-total");
         const pnlEl = document.getElementById("portfolio-pnl");
         try {
-            const response = await fetch("/api/portfolio");
+            const response = await traderbotFetch("/api/portfolio");
             const data = await response.json();
             if (!response.ok || data.total_usd == null) {
                 throw new Error(data.error || "bad status");

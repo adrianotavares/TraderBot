@@ -43,3 +43,24 @@ def test_resolve_action_breakout():
         breakout_cooldown_candles=0,
     )
     assert action == "atr_trend_breakout"
+
+
+def test_resolve_action_hold_cash_is_pause():
+    regime = RegimeResult(
+        regime="LATERAL",
+        score=4,
+        adx_value=15.0,
+        rsi_value=50.0,
+        support=100.0,
+        resistance=110.0,
+        channel_width_pct=3.0,
+    )
+    action = resolve_regime_action(
+        regime,
+        None,
+        regime_detector=SimpleNamespace(enabled=True, action_in_lateral="hold_cash"),
+        grid_manager=SimpleNamespace(enabled=True, channel_valid=lambda _r: True),
+        breakout_detector=None,
+        breakout_cooldown_candles=0,
+    )
+    assert action == "pause"

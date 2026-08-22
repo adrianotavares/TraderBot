@@ -1,5 +1,9 @@
+from types import SimpleNamespace
+
 import pytest
 
+from core.trading_engine import TradingEngine
+from persistence.state_store import StateStore
 from services.risk_manager import RiskManager
 
 
@@ -119,3 +123,158 @@ def test_compute_trade_quantity_returns_zero_when_balance_below_notional(risk_ma
         step_size=0.00001,
     )
     assert qty == 0.0
+
+
+def _order_kwargs(**overrides):
+    params = dict(
+        side="BUY",
+        quantity=0.001,
+        price=10000.0,
+        quote_balance=1000.0,
+        base_balance=0.0,
+        min_notional=5.0,
+        step_size=0.0001,
+        open_orders_count=0,
+    )
+    params.update(overrides)
+    return params
+
+
+def test_daily_loss_blocks_order(risk_manager):
+    risk_manager.record_trade_pnl(-50.0)
+    assert risk_manager.should_stop_trading_daily_loss()
+    ok, reason = risk_manager.validate_order(**_order_kwargs())
+    assert not ok
+    assert "daily loss" in reason
+
+
+def test_max_trades_per_day(risk_manager):
+    for _ in range(3):
+        risk_manager.record_trade_pnl(1.0)
+    ok, reason = risk_manager.validate_order(**_order_kwargs())
+    assert not ok
+    assert "max trades" in reason
+
+
+def test_daily_counters_persist_across_instances(tmp_path):
+    store = StateStore(tmp_path / "test.db")
+    first = RiskManager(
+        acceptable_loss_pct=1.0,
+        stop_loss_pct=0.5,
+        take_profit_at=[],
+        take_profit_amount=[],
+        max_daily_loss_usdt=50.0,
+        max_trades_per_day=5,
+        state_store=store,
+        operation_code="BTCUSDT",
+    )
+    first.record_trade_pnl(-12.5)
+    first.record_grid_trade()
+
+    second = RiskManager(
+        acceptable_loss_pct=1.0,
+        stop_loss_pct=0.5,
+        take_profit_at=[],
+        take_profit_amount=[],
+        max_daily_loss_usdt=50.0,
+        max_trades_per_day=5,
+        state_store=store,
+        operation_code="BTCUSDT",
+    )
+    assert second._daily_trades == 1
+    assert second._daily_grid_trades == 1
+    assert second._daily_loss_usdt == pytest.approx(12.5)
+
+
+def test_hydrate_from_outcomes_when_counters_missing(tmp_path):
+    from datetime import datetime, timezone
+
+    store = StateStore(tmp_path / "test.db")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    store.record_outcome(
+        {
+            "kind": "stop_loss",
+            "operation_code": "BTCUSDT",
+            "pnl_usd": -40.0,
+            "filled": True,
+            "occurred_at": f"{today}T08:00:00+00:00",
+        }
+    )
+    store.log_order(
+        "BTCUSDT",
+        {
+            "orderId": 99,
+            "side": "SELL",
+            "type": "MARKET",
+            "status": "FILLED",
+            "executedQty": "0.01",
+            "cummulativeQuoteQty": "900",
+        },
+        created_at=f"{today}T08:00:00+00:00",
+    )
+    risk = RiskManager(
+        acceptable_loss_pct=1.0,
+        stop_loss_pct=0.5,
+        take_profit_at=[],
+        take_profit_amount=[],
+        max_daily_loss_usdt=50.0,
+        max_trades_per_day=5,
+        state_store=store,
+        operation_code="BTCUSDT",
+    )
+    assert risk._daily_trades == 1
+    assert risk._daily_loss_usdt == pytest.approx(40.0)
+    ok, reason = risk.validate_order(**_order_kwargs())
+    assert ok
+
+
+def test_closed_trade_records_real_pnl_and_blocks(tmp_path):
+    store = StateStore(tmp_path / "test.db")
+    risk = RiskManager(
+        acceptable_loss_pct=1.0,
+        stop_loss_pct=0.5,
+        take_profit_at=[],
+        take_profit_amount=[],
+        max_daily_loss_usdt=10.0,
+        max_trades_per_day=5,
+        state_store=store,
+        operation_code="BTCUSDT",
+    )
+    bot = SimpleNamespace(
+        operation_code="BTCUSDT",
+        stock_code="BTC",
+        last_buy_price=100.0,
+    )
+    engine = TradingEngine(
+        bot=bot,
+        market_data=None,
+        order_executor=None,
+        risk_manager=risk,
+        state_store=store,
+    )
+    engine._record_closed_trade(
+        "stop_loss",
+        {
+            "orderId": 7,
+            "executedQty": "1",
+            "cummulativeQuoteQty": "90",
+            "fills": [{"price": "90"}],
+        },
+    )
+    assert risk._daily_loss_usdt == pytest.approx(10.0)
+    assert risk.should_stop_trading_daily_loss()
+    ok, reason = risk.validate_order(**_order_kwargs())
+    assert not ok
+    assert "daily loss" in reason
+
+    restarted = RiskManager(
+        acceptable_loss_pct=1.0,
+        stop_loss_pct=0.5,
+        take_profit_at=[],
+        take_profit_amount=[],
+        max_daily_loss_usdt=10.0,
+        max_trades_per_day=5,
+        state_store=store,
+        operation_code="BTCUSDT",
+    )
+    assert restarted.should_stop_trading_daily_loss()

@@ -1,6 +1,8 @@
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from persistence.state_store import BotState, StateStore
 
 
@@ -61,4 +63,39 @@ def test_record_outcome_and_list_newest_first():
         rows = store.list_outcomes()
         assert [row["kind"] for row in rows] == ["take_profit", "stop_loss"]
         assert rows[0]["pnl_usd"] == 0.34
+
+
+def test_daily_risk_roundtrip_and_derived(tmp_path):
+    store = StateStore(tmp_path / "test.db")
+    store.save_daily_risk("2026-08-22", "BTCUSDT", trades=2, grid_trades=4, loss_usdt=12.5)
+    loaded = store.load_daily_risk("2026-08-22", "BTCUSDT")
+    assert loaded == {"trades": 2, "grid_trades": 4, "loss_usdt": 12.5}
+    assert store.load_daily_risk("2026-08-22", "ETHUSDT")["trades"] == 0
+
+    store.log_order(
+        "BTCUSDT",
+        {
+            "orderId": 1,
+            "side": "SELL",
+            "type": "MARKET",
+            "status": "FILLED",
+            "executedQty": "0.1",
+            "cummulativeQuoteQty": "9000",
+            "fills": [{"price": "90000"}],
+        },
+        created_at="2026-08-22T12:00:00+00:00",
+    )
+    store.record_outcome(
+        {
+            "kind": "stop_loss",
+            "operation_code": "BTCUSDT",
+            "pnl_usd": -15.0,
+            "filled": True,
+            "occurred_at": "2026-08-22T12:00:01+00:00",
+        }
+    )
+    derived = store.derived_daily_risk("2026-08-22", "BTCUSDT")
+    assert derived["trades"] == 1
+    assert derived["loss_usdt"] == pytest.approx(15.0)
+    assert store.derived_daily_risk("2026-08-21", "BTCUSDT")["trades"] == 0
 

@@ -295,7 +295,15 @@ def update_config():
 
         updated = apply_dashboard_update(settings, new_config)
         save_settings(updated)
-        return jsonify({"message": "Configuração atualizada com sucesso! Reinicie o bot para aplicar."})
+        return jsonify(
+            {
+                "message": (
+                    "Configuração salva. Risco, timing, regime, grid e alertas "
+                    "valem no próximo ciclo. Troca de par, environment ou "
+                    "strategy.main exige restart."
+                )
+            }
+        )
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:

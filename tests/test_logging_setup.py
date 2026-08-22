@@ -86,3 +86,13 @@ def test_read_structured_logs_redacts_binance_signature(tmp_path):
     assert len(entries) == 1
     assert signature not in entries[0]["message"]
     assert "signature=[redacted]" in entries[0]["message"]
+
+
+def test_logger_module_does_not_configure_file_logging():
+    import inspect
+
+    import modules.Logger as logger_mod
+    import modules.logging_setup as logging_setup
+
+    assert "setup_logging()" not in inspect.getsource(logger_mod)
+    assert logging_setup._configured is False

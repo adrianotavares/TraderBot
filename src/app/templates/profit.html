@@ -224,7 +224,7 @@
         const openEmpty = document.getElementById("open-empty");
         try {
             const url = forceRefresh ? "/api/profit?refresh=1" : "/api/profit";
-            const response = await fetch(url);
+            const response = await traderbotFetch(url);
             const data = await response.json();
             if (!response.ok || data.total_usd == null) {
                 throw new Error(data.error || "bad status");

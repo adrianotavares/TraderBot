@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from config.settings import TradingSettings, apply_dashboard_update, load_settings
+from config.settings import RegimeConfig, TradingSettings, apply_dashboard_update, load_settings
 
 
 def test_load_settings_validates_assets():
@@ -55,3 +55,8 @@ def test_config_file_exists():
     settings, env = load_settings()
     assert settings.environment in ("testnet", "mainnet")
     assert len(settings.assets) >= 1
+
+
+def test_regime_hold_cash_is_accepted():
+    cfg = RegimeConfig(action_in_lateral="hold_cash")
+    assert cfg.action_in_lateral == "hold_cash"

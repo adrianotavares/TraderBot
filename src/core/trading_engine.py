@@ -8,6 +8,7 @@ from modules.StrategyRunner import StrategyRunner
 from modules.alerts import send_alert
 from modules.logging_setup import log_event
 from persistence.state_store import BotState
+from strategies.decision import StrategyDecision
 from services.asset_variation import (
     compute_candle_variation,
     format_held_position_label,
@@ -34,6 +35,7 @@ class TradingEngine:
         grid_manager=None,
         breakout_detector=None,
         breakout_price: float = 0.0,
+        sleep=None,
     ):
         self.bot = bot
         self.market_data = market_data
@@ -45,7 +47,11 @@ class TradingEngine:
         self.grid_manager = grid_manager
         self.breakout_detector = breakout_detector
         self.breakout_price = breakout_price
+        self._sleep = time.sleep if sleep is None else sleep
+        self._last_strategy_decision: StrategyDecision | None = None
         self.state = BotState(operation_code=bot.operation_code)
+        if getattr(bot, "engine", None) is None:
+            bot.engine = self
 
     def bootstrap(self):
         self.state = self.state_store.load_state(self.bot.operation_code)
@@ -56,20 +62,8 @@ class TradingEngine:
             self.bot.last_buy_price,
             self.bot.last_sell_price,
         )
-        self._sync_state_to_bot()
 
-    def _sync_state_to_bot(self):
-        self.bot.take_profit_index = self.state.take_profit_index
-        self.bot.last_buy_price = self.state.last_buy_price
-        self.bot.last_sell_price = self.state.last_sell_price
-        self.bot.last_trade_decision = self.state.last_trade_decision
-
-    def _sync_bot_to_state(self):
-        self.state.take_profit_index = self.bot.take_profit_index
-        self.state.last_buy_price = self.bot.last_buy_price
-        self.state.last_sell_price = self.bot.last_sell_price
-        self.state.last_trade_decision = self.bot.last_trade_decision
-        self.state.actual_trade_position = self.bot.actual_trade_position
+    def _save_state(self):
         self.state_store.save_state(self.state)
 
     def update_all_data(self, verbose=False):
@@ -126,9 +120,10 @@ class TradingEngine:
         )
 
     def _decision_label(self, decision) -> str:
-        if decision is True:
+        side = decision.side if isinstance(decision, StrategyDecision) else decision
+        if side is True:
             return "Comprar"
-        if decision is False:
+        if side is False:
             return "Vender"
         return "Inconclusiva"
 
@@ -173,7 +168,9 @@ class TradingEngine:
             "quote_balance": round(self._quote_balance(), 4),
             "last_buy_price": round(self.bot.last_buy_price, 4),
             "last_sell_price": round(self.bot.last_sell_price, 4),
-            "decision": self._decision_label(self.bot.last_trade_decision),
+            "decision": self._decision_label(
+                self._last_strategy_decision or self.bot.last_trade_decision
+            ),
             "final_action": final_action,
             "time_to_sleep_min": round(self.bot.time_to_sleep / 60, 2),
             "active_mode": self.state.active_mode,
@@ -208,6 +205,9 @@ class TradingEngine:
             )
         if strategy:
             payload["strategy"] = strategy
+        if self._last_strategy_decision:
+            payload["strategy_source"] = self._last_strategy_decision.source
+            payload["strategy_reason"] = self._last_strategy_decision.reason
 
         log_event(
             logging.INFO,
@@ -324,7 +324,7 @@ class TradingEngine:
             f"({regime.channel_width_pct:.2f}%) — ordens colocadas: {result.get('placed', 0)}"
         )
         self.bot.time_to_sleep = self.bot.time_to_trade
-        self._sync_bot_to_state()
+        self._save_state()
         print("------------------------------------------------")
 
     def _record_closed_trade(self, kind: str, order: dict, extra: dict | None = None):
@@ -332,7 +332,7 @@ class TradingEngine:
         buy_price = float(self.bot.last_buy_price or 0)
         pnl_usd, pnl_pct = realized_pnl(quantity, buy_price, sell_price)
         cost_usd = quantity * buy_price if quantity > 0 and buy_price > 0 else None
-        self.state_store.record_outcome(
+        inserted = self.state_store.record_outcome(
             {
                 "kind": kind,
                 "operation_code": self.bot.operation_code,
@@ -349,6 +349,8 @@ class TradingEngine:
                 "occurred_at": datetime.now(timezone.utc).isoformat(),
             }
         )
+        if inserted:
+            self.risk_manager.record_trade_pnl(float(pnl_usd or 0))
         payload = {
             "operation_code": self.bot.operation_code,
             "stock_code": self.bot.stock_code,
@@ -362,10 +364,16 @@ class TradingEngine:
         }
         if extra:
             payload.update(extra)
-        message = (
-            "Take profit executed" if kind == "take_profit" else "Stop loss executed"
-        )
-        log_event(logging.INFO if kind == "take_profit" else logging.WARNING, message, **payload)
+        if kind == "take_profit":
+            message = "Take profit executed"
+            level = logging.INFO
+        elif kind == "stop_loss":
+            message = "Stop loss executed"
+            level = logging.WARNING
+        else:
+            message = "Sell executed"
+            level = logging.INFO
+        log_event(level, message, **payload)
 
     def _handle_stop_loss(self) -> bool:
         if not self.risk_manager.check_stop_loss(
@@ -382,7 +390,7 @@ class TradingEngine:
             self.alerts_config.get("enabled", False),
         )
         self.bot.cancelAllOrders()
-        time.sleep(2)
+        self._sleep(2)
         try:
             order = self.bot.sellMarketOrder()
         except BinanceAPIException as e:
@@ -394,7 +402,7 @@ class TradingEngine:
             self._record_closed_trade("stop_loss", order)
             self.bot.actual_trade_position = False
             self.bot.take_profit_index = 0
-            self._sync_bot_to_state()
+            self._save_state()
             return True
         return False
 
@@ -436,7 +444,7 @@ class TradingEngine:
             self._record_closed_trade("take_profit", order, extra={"tp_pct": tp_pct})
             if quantity >= self.bot.last_stock_account_balance * 0.99:
                 self.bot.actual_trade_position = False
-            self._sync_bot_to_state()
+            self._save_state()
             return True
         return False
 
@@ -472,9 +480,6 @@ class TradingEngine:
             )
             self._log_order_blocked(side, reason)
             return False
-        if self.risk_manager.should_stop_trading_daily_loss():
-            logging.warning("Daily loss limit reached for %s", self.bot.operation_code)
-            return False
         return True
 
     def _place_buy(self, price=0):
@@ -492,11 +497,11 @@ class TradingEngine:
             return False
         if OrderExecutor.is_filled(order):
             self.bot.actual_trade_position = True
-            self.state_store.log_order(self.bot.operation_code, order)
-            self.risk_manager.record_trade_pnl(0)
+            if self.state_store.log_order(self.bot.operation_code, order):
+                self.risk_manager.record_trade_pnl(0)
         elif OrderExecutor.is_order_active(order):
             self.bot.actual_trade_position = True
-        self._sync_bot_to_state()
+        self._save_state()
         return order
 
     def _place_sell(self, price=0):
@@ -527,10 +532,10 @@ class TradingEngine:
             self.bot.actual_trade_position = False
             self.bot.take_profit_index = 0
             self.state_store.log_order(self.bot.operation_code, order)
-            self.risk_manager.record_trade_pnl(0)
+            self._record_closed_trade("sell", order)
         elif OrderExecutor.is_order_active(order):
             pass
-        self._sync_bot_to_state()
+        self._save_state()
         return order
 
     def execute(self):
@@ -543,7 +548,6 @@ class TradingEngine:
         print(f'Executado {datetime.now().strftime("(%H:%M:%S) %d-%m-%Y")}\n')
 
         self.update_all_data(verbose=True)
-        self._sync_state_to_bot()
 
         print("\n-------")
         print("Detalhes:")
@@ -554,7 +558,7 @@ class TradingEngine:
         if self._handle_stop_loss():
             print("\nSTOP LOSS finalizado.\n")
             self.bot.time_to_sleep = self.bot.time_to_trade
-            self._sync_bot_to_state()
+            self._save_state()
             self._log_cycle_summary(
                 regime=None,
                 action="stop_loss",
@@ -567,7 +571,7 @@ class TradingEngine:
         if self.bot.actual_trade_position and self._handle_take_profit():
             print("\nTAKE PROFIT finalizado.\n")
             self.bot.time_to_sleep = self.bot.delay_after_order
-            self._sync_bot_to_state()
+            self._save_state()
             self._log_cycle_summary(
                 regime=None,
                 action="take_profit",
@@ -636,7 +640,7 @@ class TradingEngine:
             if self.state.breakout_cooldown_candles > 0:
                 self.state.breakout_cooldown_candles -= 1
             self.bot.time_to_sleep = self.bot.time_to_trade
-            self._sync_bot_to_state()
+            self._save_state()
             self._log_cycle_summary(
                 regime=regime,
                 action=action,
@@ -654,7 +658,7 @@ class TradingEngine:
         if regime and regime.regime == "TREND":
             self.state.active_mode = "trend"
 
-        self.bot.last_trade_decision = StrategyRunner.execute(
+        decision = StrategyRunner.execute(
             self.bot,
             stock_data=self.bot.stock_data,
             main_strategy=self.bot.main_strategy,
@@ -662,49 +666,37 @@ class TradingEngine:
             fallback_strategy=self.bot.fallback_strategy,
             fallback_strategy_args=self.bot.fallback_strategy_args,
         )
-        self.state.last_trade_decision = self.bot.last_trade_decision
+        self._last_strategy_decision = decision
+        self.bot.last_trade_decision = decision.side
 
-        if self.bot.last_trade_decision is True:
+        if decision.side is True:
             if self.bot.hasOpenBuyOrder():
                 self.bot.cancelAllOrders()
-                time.sleep(2)
+                self._sleep(2)
 
-        if self.bot.last_trade_decision is False:
+        if decision.side is False:
             if self.bot.hasOpenSellOrder():
                 self.bot.cancelAllOrders()
-                time.sleep(2)
+                self._sleep(2)
 
         print("\n--------------")
-        decision_label = (
-            "Comprar"
-            if self.bot.last_trade_decision is True
-            else "Vender"
-            if self.bot.last_trade_decision is False
-            else "Inconclusiva"
-        )
-        print(f"Decisão Final: {decision_label}")
+        print(f"Decisão Final: {self._decision_label(decision)}")
 
-        if (
-            not self.bot.actual_trade_position
-            and self.bot.last_trade_decision is True
-        ):
+        if not self.bot.actual_trade_position and decision.side is True:
             print("Ação final: Comprar")
             self.bot.printStock()
             self._place_buy()
-            time.sleep(2)
+            self._sleep(2)
             self.update_all_data()
             self.bot.printStock()
             self.bot.time_to_sleep = self.bot.delay_after_order
             final_action = "Comprar"
 
-        elif (
-            self.bot.actual_trade_position
-            and self.bot.last_trade_decision is False
-        ):
+        elif self.bot.actual_trade_position and decision.side is False:
             print("Ação final: Vender")
             self.bot.printStock()
             self._place_sell()
-            time.sleep(2)
+            self._sleep(2)
             self.update_all_data()
             self.bot.printStock()
             self.bot.time_to_sleep = self.bot.delay_after_order
@@ -719,7 +711,7 @@ class TradingEngine:
             self.bot.time_to_sleep = self.bot.time_to_trade
             final_action = f"Manter posição ({position_label})"
 
-        self._sync_bot_to_state()
+        self._save_state()
         self._log_cycle_summary(
             regime=regime,
             action=action,
