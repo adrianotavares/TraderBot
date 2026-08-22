@@ -65,6 +65,29 @@ class StateStore:
                     raw_json TEXT,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS trade_outcomes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    kind TEXT NOT NULL,
+                    operation_code TEXT NOT NULL,
+                    stock_code TEXT NOT NULL DEFAULT '',
+                    quantity REAL,
+                    buy_price REAL,
+                    sell_price REAL,
+                    pnl_usd REAL,
+                    pnl_pct REAL,
+                    quote_qty REAL,
+                    order_id INTEGER,
+                    source TEXT NOT NULL DEFAULT 'live',
+                    filled INTEGER NOT NULL DEFAULT 1,
+                    occurred_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_trade_outcomes_unique
+                    ON trade_outcomes (kind, operation_code, occurred_at);
+                CREATE TABLE IF NOT EXISTS app_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                );
                 """
             )
             self._migrate(conn)
@@ -82,6 +105,42 @@ class StateStore:
         for name, ddl in migrations.items():
             if name not in columns:
                 conn.execute(f"ALTER TABLE bot_state ADD COLUMN {name} {ddl}")
+        conn.execute(
+            """
+            DELETE FROM orders_log
+            WHERE id NOT IN (
+                SELECT MIN(id) FROM orders_log
+                WHERE order_id IS NOT NULL
+                GROUP BY order_id
+            )
+            AND order_id IS NOT NULL
+            """
+        )
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_log_order_id
+            ON orders_log(order_id)
+            WHERE order_id IS NOT NULL
+            """
+        )
+        conn.execute(
+            """
+            DELETE FROM trade_outcomes
+            WHERE id NOT IN (
+                SELECT MIN(id) FROM trade_outcomes
+                WHERE order_id IS NOT NULL
+                GROUP BY order_id
+            )
+            AND order_id IS NOT NULL
+            """
+        )
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_trade_outcomes_order_id
+            ON trade_outcomes(order_id)
+            WHERE order_id IS NOT NULL
+            """
+        )
 
     def load_state(self, operation_code: str) -> BotState:
         with self._connect() as conn:
@@ -151,13 +210,18 @@ class StateStore:
                 ),
             )
 
-    def log_order(self, operation_code: str, order: dict):
+    def log_order(self, operation_code: str, order: dict, created_at: str | None = None):
         fills = order.get("fills") or [{}]
+        quantity = float(order.get("executedQty", 0) or 0)
+        quote = float(order.get("cummulativeQuoteQty", 0) or 0)
         price = float(fills[0].get("price", order.get("price", 0) or 0))
+        if quantity > 0 and quote > 0:
+            price = quote / quantity
+        occurred = created_at or datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """
-                INSERT INTO orders_log (
+                INSERT OR IGNORE INTO orders_log (
                     operation_code, order_id, side, order_type, status,
                     quantity, price, total_quote, raw_json, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -168,13 +232,102 @@ class StateStore:
                     order.get("side"),
                     order.get("type"),
                     order.get("status"),
-                    float(order.get("executedQty", 0) or 0),
+                    quantity,
                     price,
-                    float(order.get("cummulativeQuoteQty", 0) or 0),
+                    quote,
                     json.dumps(order),
+                    occurred,
+                ),
+            )
+            return cursor.rowcount > 0
+
+    def list_orders(
+        self,
+        status: str = "FILLED",
+        since: str | None = None,
+    ) -> list[dict]:
+        query = """
+            SELECT id, operation_code, order_id, side, order_type, status,
+                   quantity, price, total_quote, created_at
+            FROM orders_log
+            WHERE (? IS NULL OR status = ?)
+        """
+        params: list = [status, status]
+        if since:
+            query += " AND created_at >= ?"
+            params.append(since)
+        query += " ORDER BY created_at ASC, id ASC"
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+    def clear_outcomes(self) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM trade_outcomes")
+
+    def get_meta(self, key: str) -> Optional[str]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT value FROM app_meta WHERE key = ?",
+                (key,),
+            ).fetchone()
+        return None if row is None else row["value"]
+
+    def set_meta(self, key: str, value: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO app_meta (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (key, value),
+            )
+
+    def record_outcome(self, outcome: dict) -> bool:
+        occurred_at = outcome.get("occurred_at") or datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT OR IGNORE INTO trade_outcomes (
+                    kind, operation_code, stock_code, quantity, buy_price,
+                    sell_price, pnl_usd, pnl_pct, quote_qty, order_id,
+                    source, filled, occurred_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    outcome.get("kind"),
+                    outcome.get("operation_code"),
+                    outcome.get("stock_code") or "",
+                    outcome.get("quantity"),
+                    outcome.get("buy_price"),
+                    outcome.get("sell_price"),
+                    outcome.get("pnl_usd"),
+                    outcome.get("pnl_pct"),
+                    outcome.get("quote_qty"),
+                    outcome.get("order_id"),
+                    outcome.get("source") or "live",
+                    1 if outcome.get("filled", True) else 0,
+                    occurred_at,
                     datetime.now(timezone.utc).isoformat(),
                 ),
             )
+            return cursor.rowcount > 0
+
+    def list_outcomes(self, limit: int = 200) -> list[dict]:
+        limit = max(1, min(int(limit), 1000))
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT kind, operation_code, stock_code, quantity, buy_price,
+                       sell_price, pnl_usd, pnl_pct, quote_qty, order_id,
+                       source, filled, occurred_at
+                FROM trade_outcomes
+                ORDER BY occurred_at DESC, id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def reconcile(
         self,

@@ -20,15 +20,26 @@ from config.settings import (
     settings_to_dashboard_dict,
 )
 from modules.BinanceClient import BinanceClient
-from modules.logging_setup import read_structured_logs
+from modules.logging_setup import LOG_JSON_FILE, read_structured_logs
 from persistence.state_store import StateStore
+from services.order_sync import DEFAULT_PROFIT_CUTOFF, sync_filled_orders_from_binance
+from services.outcome_history import (
+    META_REBUILT,
+    build_outcome_board,
+    kind_hints_from_log,
+    match_trades_and_open_lots,
+    rebuild_outcomes_from_orders,
+)
 from services.portfolio import fetch_portfolio
 
 routes = Blueprint("routes", __name__)
 
 _PORTFOLIO_CACHE_TTL = 5.0
+_HISTORY_CACHE_TTL = 30.0
 _portfolio_lock = threading.Lock()
 _portfolio_cache = {"ts": 0.0, "data": None}
+_history_lock = threading.Lock()
+_history_cache = {"ts": 0.0, "data": None}
 _spot_client = None
 _spot_client_key = None
 
@@ -90,6 +101,67 @@ def get_portfolio_snapshot():
     return snapshot
 
 
+def get_profit_board(force_refresh: bool = False):
+    now = time.time()
+    with _history_lock:
+        cached = _history_cache["data"]
+        if (
+            not force_refresh
+            and cached is not None
+            and now - _history_cache["ts"] < _HISTORY_CACHE_TTL
+        ):
+            return cached
+
+    # Sync/rebuild outside the lock so Binance latency does not block other readers.
+    store = StateStore()
+    settings, env = load_settings()
+    take_profit_at = [float(level.at) for level in settings.risk.take_profit]
+    stop_loss_pct = float(settings.risk.stop_loss_pct or 0)
+    sync_info = {"inserted": 0, "scanned": 0, "cutoff": DEFAULT_PROFIT_CUTOFF}
+
+    if env.api_key and env.secret_key:
+        client = get_spot_client(
+            env.api_key,
+            env.secret_key,
+            testnet=settings.environment == "testnet",
+        )
+        sync_info = sync_filled_orders_from_binance(
+            client,
+            store,
+            [asset.operation_code for asset in settings.assets],
+            cutoff_iso=DEFAULT_PROFIT_CUTOFF,
+        )
+
+    force_rebuild = (
+        force_refresh
+        or sync_info.get("inserted", 0) > 0
+        or store.get_meta(META_REBUILT) != "1"
+    )
+    rebuild_outcomes_from_orders(
+        store,
+        take_profit_at=take_profit_at,
+        stop_loss_pct=stop_loss_pct,
+        log_path=LOG_JSON_FILE,
+        cutoff_iso=DEFAULT_PROFIT_CUTOFF,
+        force=force_rebuild,
+    )
+    orders = store.list_orders(since=DEFAULT_PROFIT_CUTOFF)
+    hints = kind_hints_from_log(LOG_JSON_FILE, orders=orders)
+    closed, open_lots = match_trades_and_open_lots(
+        orders,
+        take_profit_at=take_profit_at,
+        stop_loss_pct=stop_loss_pct,
+        kind_hints=hints,
+    )
+    board = build_outcome_board(closed, open_lots=open_lots)
+    board["sync"] = sync_info
+
+    with _history_lock:
+        _history_cache["ts"] = time.time()
+        _history_cache["data"] = board
+        return board
+
+
 def _validate_stocks_traded_list(stocks):
     if not isinstance(stocks, list) or not stocks:
         raise ValueError("stocks_traded_list must be a non-empty list")
@@ -135,6 +207,16 @@ def dashboard():
     )
 
 
+@routes.route("/profit")
+def profit_page():
+    settings, _ = load_settings()
+    return render_template(
+        "profit.html",
+        config=_dashboard_config(settings),
+        active_page="profit",
+    )
+
+
 @routes.route("/config")
 def config_page():
     settings, _ = load_settings()
@@ -162,6 +244,17 @@ def get_portfolio():
         return jsonify({"error": str(e)}), 503
     except Exception as e:
         return jsonify({"error": f"Erro ao carregar saldo: {str(e)}"}), 500
+
+
+@routes.route("/api/profit", methods=["GET"])
+def get_profit():
+    try:
+        force = request.args.get("refresh") in {"1", "true", "yes"}
+        return jsonify(get_profit_board(force_refresh=force))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 503
+    except Exception as e:
+        return jsonify({"error": f"Erro ao carregar profit: {str(e)}"}), 500
 
 
 @routes.route("/api/logs", methods=["GET"])

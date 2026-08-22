@@ -123,6 +123,60 @@ def test_api_portfolio_returns_total_usd(monkeypatch):
     assert payload["assets"][0]["stock_code"] == "BTC"
 
 
+def test_profit_page_renders():
+    client = app.test_client()
+    response = client.get("/profit")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "<h1>Profit</h1>" in html
+    assert "Custo realizado" in html
+    assert "Custo em aberto" in html
+    assert "Valor total agregado" in html
+    assert "P&amp;L realizado" in html
+    assert "Posição aberta" in html
+
+
+def test_api_profit_returns_classified_operations(monkeypatch):
+    monkeypatch.setattr(
+        "routes.get_profit_board",
+        lambda force_refresh=False: {
+            "total_usd": 800.0,
+            "total_cost_usd": 600.0,
+            "total_pnl_usd": 200.0,
+            "total_pnl_pct": 33.33,
+            "operations": [
+                {
+                    "kind": "take_profit",
+                    "stock_code": "BTC",
+                    "operation_code": "BTCUSDT",
+                    "usd_value": 800.0,
+                    "pnl_usd": 200.0,
+                    "pnl_pct": 33.33,
+                }
+            ],
+        },
+    )
+    client = app.test_client()
+    response = client.get("/api/profit")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["total_usd"] == 800.0
+    assert payload["total_pnl_usd"] == 200.0
+    assert payload["operations"][0]["kind"] == "take_profit"
+    assert payload["operations"][0]["stock_code"] == "BTC"
+
+
+def test_api_profit_returns_503_when_credentials_missing(monkeypatch):
+    def raise_missing(force_refresh=False):
+        raise ValueError("Credenciais da Binance não configuradas")
+
+    monkeypatch.setattr("routes.get_profit_board", raise_missing)
+    client = app.test_client()
+    response = client.get("/api/profit")
+    assert response.status_code == 503
+    assert "Credenciais" in response.get_json()["error"]
+
+
 def test_api_portfolio_returns_503_when_credentials_missing(monkeypatch):
     def raise_missing():
         raise ValueError("Credenciais da Binance não configuradas")

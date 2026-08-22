@@ -18,5 +18,6 @@ services:
       - "127.0.0.1:5000:5000"
     volumes:
       - ./config:/app/config
+      - ./data:/app/data
       - ./src/logs:/app/src/logs
     restart: unless-stopped

@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+{% block title %}Profit{% endblock %}
+{% block content %}
+<h1>Profit</h1>
+<p class="subtitle">
+    Realizado vs posição aberta (BUY/SELL sincronizados da Binance)
+</p>
+
+<div class="portfolio-summary" id="profit-summary">
+    <div class="portfolio-metric">
+        <span class="portfolio-label">Custo realizado</span>
+        <span class="portfolio-value" id="profit-cost">—</span>
+    </div>
+    <div class="portfolio-metric">
+        <span class="portfolio-label">Custo em aberto</span>
+        <span class="portfolio-value" id="profit-open-cost">—</span>
+    </div>
+    <div class="portfolio-metric">
+        <span class="portfolio-label">Valor total agregado</span>
+        <span class="portfolio-value" id="profit-total">—</span>
+    </div>
+    <div class="portfolio-metric">
+        <span class="portfolio-label">P&amp;L realizado</span>
+        <span class="portfolio-value" id="profit-pnl">—</span>
+    </div>
+</div>
+
+<div class="toolbar">
+    <button type="button" class="icon-btn" id="refresh-btn">
+        <span class="material-symbols-outlined">refresh</span>
+        Atualizar
+    </button>
+</div>
+
+<h2 class="section-title">Fechamentos</h2>
+<div id="outcome-list" class="outcome-list"></div>
+<div id="empty-state" class="empty" hidden>
+    Nenhum fechamento realizado ainda.
+</div>
+
+<h2 class="section-title">Posição aberta</h2>
+<div id="open-list" class="outcome-list"></div>
+<div id="open-empty" class="empty" hidden>
+    Nenhuma posição aberta na janela atual.
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const REFRESH_MS = 8000;
+
+    function escapeHtml(text) {
+        return String(text)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#39;");
+    }
+
+    function formatUsd(value, withSign) {
+        const formatted = Number(value).toLocaleString("pt-BR", {
+            style: "currency",
+            currency: "USD",
+        });
+        if (withSign && value > 0) {
+            return `+${formatted}`;
+        }
+        return formatted;
+    }
+
+    function toneForPnl(value) {
+        if (value == null) return "";
+        if (value > 0) return "up";
+        if (value < 0) return "down";
+        return "";
+    }
+
+    function formatPnlUsd(value) {
+        if (value == null) return "—";
+        return formatUsd(value, true);
+    }
+
+    function formatPnlPct(value) {
+        if (value == null) return "—";
+        const sign = value > 0 ? "+" : "";
+        return `${sign}${Number(value).toFixed(2)}%`;
+    }
+
+    function kindLabel(kind) {
+        if (kind === "stop_loss") return "Stop loss";
+        if (kind === "take_profit") return "Take profit";
+        if (kind === "open") return "Aberto";
+        return "Venda";
+    }
+
+    function kindClassName(kind) {
+        if (kind === "stop_loss") return "stop-loss";
+        if (kind === "take_profit") return "take-profit";
+        if (kind === "open") return "open";
+        return "sell";
+    }
+
+    function formatOccurredAt(value) {
+        if (!value) return "";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        return date.toLocaleString("pt-BR");
+    }
+
+    function formatQty(value) {
+        if (value == null) return "";
+        return Number(value).toLocaleString("pt-BR", { maximumFractionDigits: 8 });
+    }
+
+    function renderPnl(pnlUsd, pnlPct) {
+        const pnlEl = document.getElementById("profit-pnl");
+        pnlEl.classList.remove("up", "down");
+        if (pnlUsd == null) {
+            pnlEl.textContent = "—";
+            return;
+        }
+        let text = formatUsd(pnlUsd, true);
+        if (pnlPct != null) {
+            text += ` (${formatPnlPct(pnlPct)})`;
+        }
+        pnlEl.textContent = text;
+        if (pnlUsd > 0) pnlEl.classList.add("up");
+        if (pnlUsd < 0) pnlEl.classList.add("down");
+    }
+
+    function renderOperations(operations) {
+        const list = document.getElementById("outcome-list");
+        const empty = document.getElementById("empty-state");
+        if (!operations.length) {
+            list.innerHTML = "";
+            empty.hidden = false;
+            empty.textContent = "Nenhum fechamento realizado ainda.";
+            return;
+        }
+        empty.hidden = true;
+        list.innerHTML = operations
+            .map((row) => {
+                const tone =
+                    row.kind === "stop_loss" ? "down" : toneForPnl(row.pnl_usd);
+                const kindClass = kindClassName(row.kind);
+                const meta = [
+                    row.operation_code || "",
+                    formatOccurredAt(row.occurred_at),
+                    row.cost_usd != null ? `custo ${formatUsd(row.cost_usd, false)}` : "",
+                    row.partial_sell ? "venda parcial / lote anterior" : "",
+                ]
+                    .filter(Boolean)
+                    .join(" · ");
+                return `
+                    <article class="outcome-card ${tone}">
+                        <span class="outcome-badge ${kindClass}">${escapeHtml(
+                            kindLabel(row.kind)
+                        )}</span>
+                        <div>
+                            <p class="outcome-asset">${escapeHtml(row.stock_code)}</p>
+                            <p class="outcome-meta">${escapeHtml(meta)}</p>
+                        </div>
+                        <span class="variation ${tone}">${escapeHtml(
+                            formatPnlUsd(row.pnl_usd)
+                        )}</span>
+                        <span class="variation ${tone}">${escapeHtml(
+                            formatPnlPct(row.pnl_pct)
+                        )}</span>
+                    </article>
+                `;
+            })
+            .join("");
+    }
+
+    function renderOpenPositions(positions) {
+        const list = document.getElementById("open-list");
+        const empty = document.getElementById("open-empty");
+        if (!positions.length) {
+            list.innerHTML = "";
+            empty.hidden = false;
+            return;
+        }
+        empty.hidden = true;
+        list.innerHTML = positions
+            .map((row) => {
+                const meta = [
+                    row.operation_code || "",
+                    formatOccurredAt(row.occurred_at),
+                    row.quantity != null ? `qty ${formatQty(row.quantity)}` : "",
+                    row.buy_price != null
+                        ? `compra ${formatUsd(row.buy_price, false)}`
+                        : "",
+                ]
+                    .filter(Boolean)
+                    .join(" · ");
+                return `
+                    <article class="outcome-card">
+                        <span class="outcome-badge open">${escapeHtml(
+                            kindLabel("open")
+                        )}</span>
+                        <div>
+                            <p class="outcome-asset">${escapeHtml(row.stock_code)}</p>
+                            <p class="outcome-meta">${escapeHtml(meta)}</p>
+                        </div>
+                        <span class="variation">${escapeHtml(
+                            formatUsd(row.cost_usd ?? 0, false)
+                        )}</span>
+                        <span class="variation outcome-meta">custo</span>
+                    </article>
+                `;
+            })
+            .join("");
+    }
+
+    async function loadBoard(forceRefresh) {
+        const costEl = document.getElementById("profit-cost");
+        const openCostEl = document.getElementById("profit-open-cost");
+        const totalEl = document.getElementById("profit-total");
+        const pnlEl = document.getElementById("profit-pnl");
+        const list = document.getElementById("outcome-list");
+        const empty = document.getElementById("empty-state");
+        const openList = document.getElementById("open-list");
+        const openEmpty = document.getElementById("open-empty");
+        try {
+            const url = forceRefresh ? "/api/profit?refresh=1" : "/api/profit";
+            const response = await fetch(url);
+            const data = await response.json();
+            if (!response.ok || data.total_usd == null) {
+                throw new Error(data.error || "bad status");
+            }
+            costEl.textContent = formatUsd(data.total_cost_usd ?? 0, false);
+            openCostEl.textContent = formatUsd(data.open_cost_usd ?? 0, false);
+            totalEl.textContent = formatUsd(data.total_usd, false);
+            renderPnl(data.total_pnl_usd, data.total_pnl_pct);
+            renderOperations(data.operations || []);
+            renderOpenPositions(data.open_positions || []);
+        } catch (err) {
+            costEl.textContent = "Indisponível";
+            openCostEl.textContent = "Indisponível";
+            totalEl.textContent = "Indisponível";
+            pnlEl.classList.remove("up", "down");
+            pnlEl.textContent = "Indisponível";
+            list.innerHTML = "";
+            openList.innerHTML = "";
+            empty.hidden = false;
+            empty.textContent = "Não foi possível carregar as operações.";
+            openEmpty.hidden = true;
+        }
+    }
+
+    document.getElementById("refresh-btn").onclick = () => loadBoard(true);
+    loadBoard(true);
+    setInterval(() => {
+        if (document.hidden) return;
+        loadBoard(false);
+    }, REFRESH_MS);
+</script>
+{% endblock %}

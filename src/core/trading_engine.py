@@ -1,6 +1,6 @@
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from binance.exceptions import BinanceAPIException
 
@@ -16,6 +16,7 @@ from services.asset_variation import (
 )
 from services.market_data import MarketDataService
 from services.order_executor import OrderExecutor
+from services.outcome_history import fill_from_order, realized_pnl
 from services.regime_router import can_run_grid, resolve_regime_action
 from strategies.atr_trend import get_atr_trend_snapshot
 
@@ -326,6 +327,46 @@ class TradingEngine:
         self._sync_bot_to_state()
         print("------------------------------------------------")
 
+    def _record_closed_trade(self, kind: str, order: dict, extra: dict | None = None):
+        quantity, sell_price, quote_qty = fill_from_order(order)
+        buy_price = float(self.bot.last_buy_price or 0)
+        pnl_usd, pnl_pct = realized_pnl(quantity, buy_price, sell_price)
+        cost_usd = quantity * buy_price if quantity > 0 and buy_price > 0 else None
+        self.state_store.record_outcome(
+            {
+                "kind": kind,
+                "operation_code": self.bot.operation_code,
+                "stock_code": self.bot.stock_code,
+                "quantity": quantity or None,
+                "buy_price": buy_price or None,
+                "sell_price": sell_price or None,
+                "pnl_usd": pnl_usd,
+                "pnl_pct": pnl_pct,
+                "quote_qty": quote_qty or None,
+                "order_id": order.get("orderId"),
+                "source": "live",
+                "filled": True,
+                "occurred_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        payload = {
+            "operation_code": self.bot.operation_code,
+            "stock_code": self.bot.stock_code,
+            "event": kind,
+            "quantity": quantity,
+            "buy_price": round(buy_price, 4) if buy_price else None,
+            "sell_price": round(sell_price, 4) if sell_price else None,
+            "cost_usd": None if cost_usd is None else round(cost_usd, 4),
+            "pnl_usd": pnl_usd,
+            "pnl_pct": pnl_pct,
+        }
+        if extra:
+            payload.update(extra)
+        message = (
+            "Take profit executed" if kind == "take_profit" else "Stop loss executed"
+        )
+        log_event(logging.INFO if kind == "take_profit" else logging.WARNING, message, **payload)
+
     def _handle_stop_loss(self) -> bool:
         if not self.risk_manager.check_stop_loss(
             self.bot.stock_data,
@@ -334,12 +375,6 @@ class TradingEngine:
         ):
             return False
 
-        log_event(
-            logging.WARNING,
-            "Stop loss triggered",
-            operation_code=self.bot.operation_code,
-            event="stop_loss",
-        )
         send_alert(
             self.alerts_config.get("webhook_url", ""),
             "Stop Loss",
@@ -355,10 +390,13 @@ class TradingEngine:
             self._log_order_blocked("SELL", str(e))
             return False
         if OrderExecutor.is_filled(order):
+            self.state_store.log_order(self.bot.operation_code, order)
+            self._record_closed_trade("stop_loss", order)
             self.bot.actual_trade_position = False
             self.bot.take_profit_index = 0
             self._sync_bot_to_state()
-        return True
+            return True
+        return False
 
     def _handle_take_profit(self) -> bool:
         result = self.risk_manager.check_take_profit(
@@ -395,16 +433,10 @@ class TradingEngine:
         if OrderExecutor.is_filled(order):
             self.bot.take_profit_index = new_index
             self.state_store.log_order(self.bot.operation_code, order)
+            self._record_closed_trade("take_profit", order, extra={"tp_pct": tp_pct})
             if quantity >= self.bot.last_stock_account_balance * 0.99:
                 self.bot.actual_trade_position = False
             self._sync_bot_to_state()
-            log_event(
-                logging.INFO,
-                "Take profit executed",
-                operation_code=self.bot.operation_code,
-                event="take_profit",
-                tp_pct=tp_pct,
-            )
             return True
         return False
 

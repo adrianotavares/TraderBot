@@ -32,6 +32,11 @@
                     >Acompanhamento</a
                 >
                 <a
+                    href="{{ url_for('routes.profit_page') }}"
+                    class="{{ 'active' if active_page == 'profit' else '' }}"
+                    >Profit</a
+                >
+                <a
                     href="{{ url_for('routes.config_page') }}"
                     class="{{ 'active' if active_page == 'config' else '' }}"
                     >Configuração</a
