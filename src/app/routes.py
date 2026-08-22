@@ -201,9 +201,9 @@ def _dashboard_config(settings):
 def dashboard():
     settings, _ = load_settings()
     return render_template(
-        "acompanhamento.html",
+        "tracking.html",
         config=_dashboard_config(settings),
-        active_page="acompanhamento",
+        active_page="tracking",
     )
 
 
@@ -233,7 +233,7 @@ def get_config():
         settings, _ = load_settings()
         return jsonify(_dashboard_config(settings))
     except Exception as e:
-        return jsonify({"error": f"Erro ao carregar configuração: {str(e)}"}), 500
+        return jsonify({"error": f"Erro ao carregar config: {str(e)}"}), 500
 
 
 @routes.route("/api/portfolio", methods=["GET"])
@@ -298,7 +298,7 @@ def update_config():
         return jsonify(
             {
                 "message": (
-                    "Configuração salva. Risco, timing, regime, grid e alertas "
+                    "Config salva. Risco, timing, regime, grid e alertas "
                     "valem no próximo ciclo. Troca de par, environment ou "
                     "strategy.main exige restart."
                 )
@@ -307,4 +307,4 @@ def update_config():
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        return jsonify({"error": f"Erro ao atualizar configuração: {str(e)}"}), 500
+        return jsonify({"error": f"Erro ao atualizar config: {str(e)}"}), 500

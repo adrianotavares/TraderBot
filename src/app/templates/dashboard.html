@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Configuração{% endblock %}
+{% block title %}Config{% endblock %}
 {% block content %}
-<h1>Configuração</h1>
+<h1>Config</h1>
 <p class="subtitle">
     Risco, timing, regime e grid valem no próximo ciclo. Troca de par ou
     estratégia principal exige restart do bot.
@@ -187,11 +187,11 @@
 
         if (!response.ok) {
             const error = await response.json();
-            showToast(error.error || "Erro ao salvar configuração.");
+            showToast(error.error || "Erro ao salvar config.");
             return;
         }
 
-        showToast("Configuração salva. Limites valem no próximo ciclo; par/estratégia exigem restart.");
+        showToast("Config salva. Limites valem no próximo ciclo; par/estratégia exigem restart.");
         carregarConfiguracao();
     };
 

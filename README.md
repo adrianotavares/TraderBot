@@ -254,7 +254,7 @@ O bot inicia uma thread por ativo configurado. Com `thread_lock: true`, os ciclo
 PYTHONPATH=src python src/app/app.py
 ```
 
-Acesse `http://localhost:5000` para o acompanhamento (log estruturado) e `http://localhost:5000/config` para editar o YAML. O Flask escuta só em `127.0.0.1` por padrão (`FLASK_HOST` / `FLASK_PORT` para alterar). **Reinicie o bot** após salvar.
+Acesse `http://localhost:5000` para o Tracking (log estruturado) e `http://localhost:5000/config` para editar o YAML. O Flask escuta só em `127.0.0.1` por padrão (`FLASK_HOST` / `FLASK_PORT` para alterar). **Reinicie o bot** após salvar.
 
 ### Docker
 

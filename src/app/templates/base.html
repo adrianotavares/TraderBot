@@ -28,8 +28,8 @@
             <nav>
                 <a
                     href="{{ url_for('routes.dashboard') }}"
-                    class="{{ 'active' if active_page == 'acompanhamento' else '' }}"
-                    >Acompanhamento</a
+                    class="{{ 'active' if active_page == 'tracking' else '' }}"
+                    >Tracking</a
                 >
                 <a
                     href="{{ url_for('routes.profit_page') }}"
@@ -39,7 +39,7 @@
                 <a
                     href="{{ url_for('routes.config_page') }}"
                     class="{{ 'active' if active_page == 'config' else '' }}"
-                    >Configuração</a
+                    >Config</a
                 >
             </nav>
         </header>

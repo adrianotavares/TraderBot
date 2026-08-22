@@ -17,12 +17,12 @@ risk:
   acceptable_loss_pct: 1.5
   stop_loss_pct: 2.0
   take_profit:
-    - at: 5
-      amount: 30
-    - at: 10
-      amount: 40
-    - at: 20
-      amount: 30
+    - at: 7
+      amount: 100
+ #    - at: 10
+ #      amount: 50
+ #   - at: 20
+ #     amount: 50
   max_daily_loss_usdt: 50.0
   max_trades_per_day: 5
   max_open_orders: 3
@@ -37,13 +37,13 @@ assets:
   - stock_code: BTC
     operation_code: BTCUSDT
     traded_quantity: 0
-    traded_percentage: 10
-    breakout_price: 67000
+    traded_percentage: 50
+    breakout_price: 78000
   - stock_code: ETH
     operation_code: ETHUSDT
     traded_quantity: 0
-    traded_percentage: 10
-    breakout_price: 2000
+    traded_percentage: 50
+    breakout_price: 2450
 
 operation:
   cancel_orders_on_shutdown: false
@@ -59,8 +59,8 @@ regime:
   adx_period: 14
   adx_lateral_threshold: 20
   adx_trend_threshold: 25
-  rsi_low: 30
-  rsi_high: 70
+  rsi_low: 40
+  rsi_high: 60
   ema_fast: 20
   ema_slow: 50
   ema_compression_pct: 0.5
@@ -85,4 +85,4 @@ breakout:
   volume_multiplier: 1.5
   require_bullish_candle: true
   cooldown_candles: 3
-  reentry_adx_max: 22
+  reentry_adx_max: 25
