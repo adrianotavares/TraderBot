@@ -1,88 +1,80 @@
 environment: mainnet
 thread_lock: true
-
 strategy:
   main: atr_trend
   main_args:
-    atr_period: 14
     atr_multiplier: 2.5
+    atr_period: 14
     trend_sma_period: 200
   fallback: moving_average
   fallback_args:
     fast_window: 21
     slow_window: 55
   fallback_enabled: true
-
 risk:
   acceptable_loss_pct: 1.5
   stop_loss_pct: 2.0
   take_profit:
-    - at: 7
-      amount: 100
- #    - at: 10
- #      amount: 50
- #   - at: 20
- #     amount: 50
+  - at: 7.0
+    amount: 100.0
   max_daily_loss_usdt: 50.0
   max_trades_per_day: 5
   max_open_orders: 3
   max_grid_trades_per_day: 20
-
 timing:
   candle_period: 4h
   tempo_entre_trades: 150
-  delay_entre_ordens: 7200
-
+  delay_entre_ordens: 3600
 assets:
-  - stock_code: BTC
-    operation_code: BTCUSDT
-    traded_quantity: 0
-    traded_percentage: 50
-    breakout_price: 78000
-  - stock_code: ETH
-    operation_code: ETHUSDT
-    traded_quantity: 0
-    traded_percentage: 50
-    breakout_price: 2450
-
+- stock_code: BTC
+  operation_code: BTCUSDT
+  traded_quantity: 0.0
+  traded_percentage: 50.0
+  breakout_price: 78000.0
+- stock_code: ETH
+  operation_code: ETHUSDT
+  traded_quantity: 0.0
+  traded_percentage: 50.0
+  breakout_price: 2450.0
 operation:
   cancel_orders_on_shutdown: false
   circuit_breaker_errors: 5
   circuit_breaker_pause_seconds: 300
-
 alerts:
   enabled: false
-  webhook_url: ""
-
+  webhook_url: ''
 regime:
   enabled: true
   adx_period: 14
-  adx_lateral_threshold: 20
-  adx_trend_threshold: 25
-  rsi_low: 40
-  rsi_high: 60
+  adx_lateral_threshold: 20.0
+  adx_trend_threshold: 25.0
+  rsi_period: 14
+  rsi_low: 40.0
+  rsi_high: 60.0
   ema_fast: 20
   ema_slow: 50
   ema_compression_pct: 0.5
   range_lookback: 60
   min_touches: 3
+  touch_tolerance_pct: 0.3
   min_lateral_signals: 3
+  min_candles: 60
   action_in_lateral: grid
-
 grid:
   enabled: true
   levels: 6
-  capital_pct: 30
+  capital_pct: 30.0
   min_channel_width_pct: 1.5
   max_channel_width_pct: 8.0
   min_profit_per_level_pct: 0.35
   max_open_orders: 10
-
 breakout:
   enabled: true
-  adx_min: 25
+  adx_period: 14
+  adx_min: 25.0
   adx_rising_bars: 2
   volume_multiplier: 1.5
+  volume_sma_period: 20
   require_bullish_candle: true
   cooldown_candles: 3
-  reentry_adx_max: 25
+  reentry_adx_max: 25.0

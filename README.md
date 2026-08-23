@@ -3,6 +3,8 @@
 
 TraderBot é um robô de negociação automatizada desenvolvido em Python para operar na Binance Spot com configuração versionada, dashboard web, persistência de estado, guardrails de risco, detecção de regime de mercado, grid spot em canal lateral e suporte a testnet.
 
+O **bot** (`src/main.py`) e o **dashboard** (`src/app/app.py`) são processos separados: o primeiro executa as ordens; o segundo monitora logs, P&L e configuração via navegador.
+
 ## Funcionalidades
 
 * **Negociação automatizada** com estratégias plugáveis e fallback
@@ -11,9 +13,8 @@ TraderBot é um robô de negociação automatizada desenvolvido em Python para o
 * **Grid spot** em mercado lateral, dentro de canal de suporte/resistência válido
 * **Breakout detector** para reativar `atr_trend` após rompimento com volume
 * **Multi-asset**: uma thread por ativo (ex.: BTC + ETH), com `thread_lock` opcional
-* **Configuração unificada** via `config/trading.yaml` + dashboard Flask
-* **Dashboard servido por WSGI de produção** (waitress), com login por senha e sessão assinada
-* **Editor de configuração completo**: formulário gerado do schema, preview de impacto e histórico de versões
+* **Configuração unificada** via `config/trading.yaml` + dashboard web
+* **Dashboard em produção** (waitress): login por senha, sessão assinada e editor completo do YAML
 * **Testnet e mainnet** controlados por `TRADING_ENV` no `.env`
 * **Persistência de estado** em SQLite (`data/traderbot.db`) com modo ativo (`trend` / `grid`)
 * **Guardrails de risco**: min notional, limites diários, circuit breaker, limites de grid
@@ -32,39 +33,89 @@ TraderBot é um robô de negociação automatizada desenvolvido em Python para o
 ```bash
 git clone <URL_DO_SEU_REPOSITÓRIO>
 cd TraderBot
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+cp .env.example .env
 ```
+
+Edite o `.env` com suas chaves da Binance. O pacote `waitress` (servidor WSGI do dashboard) vem no `requirements.txt` — sem ele, `python src/app/app.py` falha com `ModuleNotFoundError: No module named 'waitress'`.
+
+## Início rápido
+
+Depois de instalar e configurar o `.env`:
+
+```bash
+# 1. Senha do dashboard (recomendado)
+python src/app/hash_password.py
+# Cole a linha DASHBOARD_PASSWORD_HASH=... gerada no .env
+
+# 2. Bot de trading (terminal 1)
+./run.sh
+
+# 3. Dashboard web (terminal 2)
+PYTHONPATH=src python src/app/app.py
+```
+
+Abra **http://localhost:5000** — Tracking (`/`), Profit (`/profit`), Config (`/config`). Com senha configurada, faça login em `/login`.
+
+| Componente | Comando | URL / porta |
+|------------|---------|-------------|
+| Bot | `./run.sh` ou `PYTHONPATH=src python src/main.py` | — |
+| Dashboard | `PYTHONPATH=src python src/app/app.py` | `http://127.0.0.1:5000` (padrão) |
+| Docker (ambos) | `docker compose up -d` | dashboard em `127.0.0.1:5000` |
+
+O dashboard **não** inicia o bot. Para operar de verdade, rode os dois processos (ou use Docker com os serviços `bot` e `dashboard`).
 
 ## Configuração
 
 ### 1. Variáveis de ambiente (`.env`)
 
-Copie `.env.example` para `.env`:
+Copie `.env.example` para `.env` e ajuste os valores:
 
 ```bash
-BINANCE_API_KEY="sua_api_key"
-BINANCE_SECRET_KEY="sua_secret_key"
-TRADING_ENV=testnet
-LOG_LEVEL=INFO
-TRADING_CONFIG=config/trading.yaml
-
-# Dashboard
-FLASK_HOST=127.0.0.1
-FLASK_PORT=5000
-WSGI_THREADS=8
-DASHBOARD_PASSWORD_HASH=
-FLASK_TOKEN=
-FLASK_SECRET_KEY=
-FLASK_COOKIE_SECURE=0
+cp .env.example .env
 ```
 
-`TRADING_ENV` deve coincidir com `environment` em `config/trading.yaml` (`testnet` ou `mainnet`). Quando definido, ele **sobrepõe** o valor do YAML — o dashboard sinaliza esse conflito na página de Config.
+**Trading (obrigatório para operar):**
 
-Variáveis do dashboard estão detalhadas em [Dashboard web](#dashboard-web). Use `TRADERBOT_ENV_FILE` para apontar para outro arquivo `.env`.
+| Variável | Descrição |
+|----------|-----------|
+| `BINANCE_API_KEY` | API key Spot |
+| `BINANCE_SECRET_KEY` | Secret key Spot |
+| `TRADING_ENV` | `testnet` ou `mainnet` — **sobrepõe** `environment` do YAML quando definido |
+| `LOG_LEVEL` | `INFO`, `DEBUG`, etc. |
+| `TRADING_CONFIG` | Caminho do YAML (padrão: `config/trading.yaml`) |
+
+**Dashboard:**
+
+| Variável | Padrão | Descrição |
+|----------|--------|-----------|
+| `FLASK_HOST` | `127.0.0.1` | Interface de escuta |
+| `FLASK_PORT` | `5000` | Porta HTTP |
+| `WSGI_THREADS` | `8` | Threads do waitress (mantenha **um** processo) |
+| `FLASK_DEV_SERVER` | `0` | `1` = servidor Flask com reload (só desenvolvimento) |
+| `DASHBOARD_PASSWORD_HASH` | — | Hash da senha (`python src/app/hash_password.py`) |
+| `FLASK_TOKEN` | — | Token para `curl`/scripts (`X-TraderBot-Token`); opcional |
+| `FLASK_SECRET_KEY` | auto | Chave da sessão; se vazia, gravada em `data/.flask_secret` |
+| `FLASK_COOKIE_SECURE` | `0` | `1` atrás de HTTPS |
+
+**Outros:**
+
+| Variável | Descrição |
+|----------|-----------|
+| `TRADERBOT_ENV_FILE` | Caminho alternativo do `.env` (testes ou múltiplos ambientes) |
+| `TRADERBOT_LOG_DIR` | Diretório de logs (padrão: `src/logs`) |
+
+`TRADING_ENV` deve coincidir com `environment` em `config/trading.yaml`. Se divergirem, o valor do `.env` prevalece na operação do bot — a página **Config** do dashboard exibe um aviso quando isso acontece.
+
+Detalhes de autenticação e da API do dashboard estão em [Dashboard web](#dashboard-web).
 
 ### 2. Configuração de trading (`config/trading.yaml`)
 
-Exemplo completo com as seções atuais:
+Arquivo principal de parâmetros. Pode ser editado à mão ou pela página **Config** do dashboard (`/config`). Cada save pelo dashboard gera backup em `config/history/` (últimas 20 versões).
+
+Exemplo das seções (valores ilustrativos — confira o arquivo ativo no repositório):
 
 ```yaml
 environment: mainnet
@@ -86,12 +137,8 @@ risk:
   acceptable_loss_pct: 1.5
   stop_loss_pct: 2.0
   take_profit:
-    - at: 5
-      amount: 30
-    - at: 10
-      amount: 40
-    - at: 20
-      amount: 30
+    - at: 7
+      amount: 100
   max_daily_loss_usdt: 50.0
   max_trades_per_day: 5
   max_open_orders: 3
@@ -99,20 +146,20 @@ risk:
 
 timing:
   candle_period: 4h
-  tempo_entre_trades: 3600      # segundos entre ciclos (ex.: 3600 = 1h)
+  tempo_entre_trades: 150
   delay_entre_ordens: 7200
 
 assets:
   - stock_code: BTC
     operation_code: BTCUSDT
     traded_quantity: 0
-    traded_percentage: 10
-    breakout_price: 67000
+    traded_percentage: 50
+    breakout_price: 78000
   - stock_code: ETH
     operation_code: ETHUSDT
     traded_quantity: 0
-    traded_percentage: 10
-    breakout_price: 2000
+    traded_percentage: 50
+    breakout_price: 2450
 
 operation:
   cancel_orders_on_shutdown: false
@@ -128,15 +175,15 @@ regime:
   adx_period: 14
   adx_lateral_threshold: 20
   adx_trend_threshold: 25
-  rsi_low: 30
-  rsi_high: 70
+  rsi_low: 40
+  rsi_high: 60
   ema_fast: 20
   ema_slow: 50
   ema_compression_pct: 0.5
   range_lookback: 60
   min_touches: 3
   min_lateral_signals: 3
-  action_in_lateral: grid       # pause | grid
+  action_in_lateral: grid       # pause | grid | hold_cash
 
 grid:
   enabled: true
@@ -154,8 +201,10 @@ breakout:
   volume_multiplier: 1.5
   require_bullish_candle: true
   cooldown_candles: 3
-  reentry_adx_max: 22
+  reentry_adx_max: 25
 ```
+
+**Recarregamento pelo bot:** mudanças em `risk`, `timing`, `regime`, `grid`, `breakout`, `alerts` e `operation` valem no próximo ciclo. Troca de par, `environment`, `strategy.main` ou `timing.candle_period` exige **restart** do processo `src/main.py`.
 
 Estratégias disponíveis: `atr_trend`, `weapon_candle`, `moving_average`, `moving_average_antecipation`, `vortex`, `rsi`, `ma_rsi_volume`, `ut_bot_alerts`.
 
@@ -172,7 +221,7 @@ strategy:
     trend_sma_period: 200
 timing:
   candle_period: 4h
-  tempo_entre_trades: 3600
+  tempo_entre_trades: 150   # segundos entre ciclos (ajuste conforme o ativo)
 ```
 
 ### Validar antes de operar
@@ -245,6 +294,8 @@ Stop loss e take profit **continuam ativos** em todos os modos.
 
 ## Execução
 
+### Bot de trading
+
 ```bash
 ./run.sh
 # ou
@@ -267,11 +318,28 @@ O bot inicia uma thread por ativo configurado. Com `thread_lock: true`, os ciclo
 PYTHONPATH=src python src/app/app.py
 ```
 
-O dashboard roda sobre **waitress**, um servidor WSGI de produção — não há mais o aviso `This is a development server`. São páginas de Tracking (`/`), Profit (`/profit`) e Config (`/config`), mais `/healthz` para healthcheck.
+Servidor **waitress** (WSGI de produção) em `http://127.0.0.1:5000` por padrão (`FLASK_HOST` / `FLASK_PORT` no `.env`).
 
-Deliberadamente é **um único processo** com um pool de threads (`WSGI_THREADS`, padrão 8). As rotas mantêm cache de portfólio, cache de histórico e um cliente Binance reaproveitado no próprio processo; múltiplos workers duplicariam esse estado, abririam conexões redundantes e fariam escritas concorrentes no SQLite. Para iterar localmente com reload automático, use `FLASK_DEV_SERVER=1`.
+| Rota | Descrição |
+|------|-----------|
+| `/` | Tracking — logs estruturados e portfólio |
+| `/profit` | P&L realizado e posições abertas |
+| `/config` | Editor completo do YAML |
+| `/login` | Autenticação (quando `DASHBOARD_PASSWORD_HASH` está definido) |
+| `/healthz` | Healthcheck (sem autenticação) |
 
-O bot continua sendo um processo separado (`src/main.py`). O dashboard não inicia threads de negociação.
+**Produção vs desenvolvimento**
+
+* Padrão: waitress, um processo, `WSGI_THREADS` threads (padrão 8). Não use múltiplos workers — o dashboard mantém cache e cliente Binance em memória.
+* Desenvolvimento com reload: `FLASK_DEV_SERVER=1 PYTHONPATH=src python src/app/app.py`
+
+**Problemas comuns**
+
+| Erro | Solução |
+|------|---------|
+| `No module named 'waitress'` | Ative o venv e rode `pip install -r requirements.txt` |
+| `DASHBOARD_PASSWORD_HASH is required when FLASK_HOST=0.0.0.0` | Gere o hash com `python src/app/hash_password.py` e defina no `.env` |
+| Páginas carregam mas API retorna 401 | Defina `DASHBOARD_PASSWORD_HASH` e faça login — `FLASK_TOKEN` sozinho não autentica o navegador |
 
 #### Autenticação
 
@@ -302,7 +370,7 @@ O formulário é gerado a partir do schema Pydantic, então expõe todas as seç
 * **Painel de status**: se o bot está rodando, ambiente efetivo e sua origem, data do último save e restart pendente
 * **Badge TESTNET/MAINNET** fixo na barra superior
 
-Mudanças de `risk`, `timing`, `regime`, `grid`, `breakout`, `alerts` e `operation` são recarregadas pelo bot no próximo ciclo. Troca de par, `environment`, `strategy.main` ou `timing.candle_period` exige **restart do bot** — o dashboard avisa quais.
+Regras de recarregamento: ver [Configuração de trading](#2-configuração-de-trading-configtradingyaml). O endpoint legado `POST /update-config` (formato `MAIN_STRATEGY`, etc.) continua funcionando; a UI usa `POST /api/config`.
 
 #### Endpoints da API
 
@@ -318,13 +386,29 @@ Mudanças de `risk`, `timing`, `regime`, `grid`, `breakout`, `alerts` e `operati
 | GET | `/api/portfolio`, `/api/profit`, `/api/logs` | Dados das páginas de Tracking e Profit |
 | GET | `/healthz` | Healthcheck, sem autenticação |
 
-### Docker
+Rotas legadas ainda disponíveis: `GET /get-config`, `POST /update-config`.
+
+Exemplo de chamada autenticada com token (scripts):
 
 ```bash
+curl -s -H "X-TraderBot-Token: $FLASK_TOKEN" http://127.0.0.1:5000/api/status | jq .
+```
+
+### Docker
+
+Antes de subir, defina `DASHBOARD_PASSWORD_HASH` no `.env` (obrigatório para o serviço `dashboard`):
+
+```bash
+python src/app/hash_password.py   # copie a linha gerada para o .env
 docker compose up -d
 ```
 
-Serviços: `bot` (trading loop) e `dashboard` (porta `127.0.0.1:5000`, com healthcheck em `/healthz`). O serviço `dashboard` faz bind em `0.0.0.0` dentro do container, então exige `DASHBOARD_PASSWORD_HASH` ou `FLASK_TOKEN` no `.env`.
+| Serviço | Função | Porta |
+|---------|--------|-------|
+| `bot` | Loop de trading (`src/main.py`) | — |
+| `dashboard` | Interface web (`src/app/app.py`) | `127.0.0.1:5000` |
+
+O container do dashboard escuta em `0.0.0.0` internamente; o compose exige `DASHBOARD_PASSWORD_HASH` — `FLASK_TOKEN` sozinho **não** libera bind público nem login no navegador. Healthcheck: `GET /healthz`.
 
 ### Backtests
 
@@ -364,31 +448,43 @@ Suíte atual cobre: `atr_trend`, `regime_detector`, `grid_spot`, `breakout_detec
 ## Checklist: Testnet → Mainnet
 
 1. Criar chaves na **Binance Spot Testnet** (não reutilizar chaves de produção)
-2. Definir `TRADING_ENV=testnet` no `.env` e `environment: testnet` no YAML
-3. Validar `config/trading.yaml` com quantidades pequenas
-4. Rodar o bot por **48–72 horas** na testnet e revisar logs em `src/logs/`
-5. Confirmar reconciliação de estado após restart (`data/traderbot.db`)
-6. Verificar `regime_detected`, stop loss, take profit e bloqueios de risco nos logs JSON
-7. Rodar `pytest tests/` sem falhas
-8. Trocar para chaves **mainnet** e `TRADING_ENV=mainnet`
-9. Reduzir exposição inicial (`traded_percentage`) e monitorar o primeiro dia manualmente
+2. Definir `TRADING_ENV=testnet` no `.env` e `environment: testnet` no YAML (mantenha os dois alinhados)
+3. Gerar `DASHBOARD_PASSWORD_HASH` se for expor o dashboard fora de localhost
+4. Validar `config/trading.yaml` com quantidades pequenas (ou pela página Config)
+5. Rodar o bot por **48–72 horas** na testnet e revisar logs em `src/logs/`
+6. Confirmar reconciliação de estado após restart (`data/traderbot.db`)
+7. Verificar `regime_detected`, stop loss, take profit e bloqueios de risco nos logs JSON
+8. Rodar `pytest tests/` sem falhas
+9. Trocar para chaves **mainnet** e `TRADING_ENV=mainnet`
+10. Reduzir exposição inicial (`traded_percentage`) e monitorar o primeiro dia manualmente
 
 ## Arquitetura
 
+Dois processos independentes compartilham `config/trading.yaml`, `.env` e `data/traderbot.db`:
+
 ```
-src/main.py
-  └── thread por ativo → BinanceTraderBot (facade)
-        └── TradingEngine
-              ├── MarketDataService
-              ├── OrderExecutor
-              ├── RiskManager
-              ├── StrategyRunner (atr_trend + fallback)
-              ├── RegimeDetector
-              ├── GridSpotManager
-              ├── BreakoutDetector
-              ├── regime_router (resolve_regime_action)
-              └── StateStore (SQLite)
-        └── BinanceClient (sync, retry, recvWindow)
+┌─────────────────────────────┐     ┌──────────────────────────────┐
+│  src/main.py (bot)          │     │  src/app/app.py (dashboard)  │
+│  · thread por ativo         │     │  · waitress (WSGI)           │
+│  · SettingsWatch (YAML)     │     │  · sessão + CSRF             │
+│  · ProcessLock (1 inst.)    │     │  · Tracking / Profit / Config│
+└──────────────┬──────────────┘     └──────────────┬───────────────┘
+               └────────────────┬───────────────────┘
+                                ▼
+              config/trading.yaml · .env · data/traderbot.db
+```
+
+**Bot (`src/main.py`):**
+
+```
+BinanceTraderBot (facade)
+  └── TradingEngine
+        ├── MarketDataService · OrderExecutor · RiskManager
+        ├── StrategyRunner (atr_trend + fallback)
+        ├── RegimeDetector · GridSpotManager · BreakoutDetector
+        ├── regime_router (resolve_regime_action)
+        └── StateStore (SQLite)
+  └── BinanceClient (sync, retry, recvWindow)
 ```
 
 **Persistência (`BotState`):** `active_mode`, `grid_support`, `grid_resistance`, `breakout_cooldown_candles`, posição, take profit index e preços de referência — sobrevivem a restarts.
