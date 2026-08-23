@@ -42,18 +42,45 @@
                     >Config</a
                 >
             </nav>
+            <div class="app-bar-end">
+                <span
+                    class="env-badge {{ environment }}"
+                    title="Ambiente definido em {{ environment_source }}"
+                    >{{ environment }}</span
+                >
+                {% if auth_enabled and authenticated %}
+                <form method="post" action="{{ url_for('routes.logout') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                    <button type="submit" class="icon-btn" title="Encerrar sessão">
+                        <span class="material-symbols-outlined">logout</span>
+                    </button>
+                </form>
+                {% endif %}
+            </div>
         </header>
         <main>{% block content %}{% endblock %}</main>
         <script>
-            window.TRADERBOT_TOKEN = {{ flask_token|default("", true)|tojson }};
+            window.TRADERBOT_CSRF = {{ csrf_token|default("", true)|tojson }};
+            window.TRADERBOT_AUTH = {{ (auth_enabled or false)|tojson }};
             window.traderbotFetch = function (url, options) {
                 options = options || {};
                 const headers = Object.assign({}, options.headers || {});
-                if (window.TRADERBOT_TOKEN) {
-                    headers["X-TraderBot-Token"] = window.TRADERBOT_TOKEN;
+                const method = (options.method || "GET").toUpperCase();
+                if (
+                    window.TRADERBOT_CSRF &&
+                    method !== "GET" &&
+                    method !== "HEAD"
+                ) {
+                    headers["X-TraderBot-CSRF"] = window.TRADERBOT_CSRF;
                 }
                 options.headers = headers;
-                return fetch(url, options);
+                options.credentials = "same-origin";
+                return fetch(url, options).then(function (response) {
+                    if (response.status === 401 && window.TRADERBOT_AUTH) {
+                        window.location.href = "/login";
+                    }
+                    return response;
+                });
             };
         </script>
         {% block scripts %}{% endblock %}

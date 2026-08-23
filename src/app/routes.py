@@ -1,7 +1,11 @@
+import json
+import logging
 import os
 import sys
 import threading
 import time
+from datetime import datetime, timezone
+from pathlib import Path
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SRC_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -10,18 +14,42 @@ if SRC_PATH not in sys.path:
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, redirect, render_template, request, jsonify, url_for
+from pydantic import ValidationError
 
+from config.reload import classify_settings_delta
 from config.settings import (
     UPDATABLE_DASHBOARD_KEYS,
+    apply_config_payload,
     apply_dashboard_update,
+    config_schema,
+    environment_override,
+    list_config_backups,
     load_settings,
+    restore_config_backup,
     save_settings,
     settings_to_dashboard_dict,
+    validation_field_errors,
+    yaml_environment,
 )
 from modules.BinanceClient import BinanceClient
-from modules.logging_setup import LOG_JSON_FILE, read_structured_logs
-from persistence.state_store import StateStore
+from modules.logging_setup import LOG_JSON_FILE, log_event, read_structured_logs
+from persistence.process_lock import lock_path_for
+from persistence.state_store import DEFAULT_DB_PATH, StateStore
+from security import (
+    client_key,
+    csrf_valid,
+    end_session,
+    ensure_csrf_token,
+    is_authenticated,
+    login_blocked_for,
+    register_failed_login,
+    reset_login_attempts,
+    safe_redirect_target,
+    session_auth_enabled,
+    start_session,
+    verify_password,
+)
 from services.order_sync import DEFAULT_PROFIT_CUTOFF, sync_filled_orders_from_binance
 from services.outcome_history import (
     META_REBUILT,
@@ -197,6 +225,126 @@ def _dashboard_config(settings):
     return config
 
 
+def _bot_process_status() -> dict:
+    """Inspect the bot's flock file without competing for the lock itself."""
+    lock_file = lock_path_for(DEFAULT_DB_PATH)
+    status = {"running": False, "pid": None, "environment": None}
+    if not lock_file.exists():
+        return status
+    try:
+        payload = json.loads(lock_file.read_text(encoding="utf-8").strip() or "{}")
+    except (json.JSONDecodeError, OSError):
+        return status
+
+    pid = payload.get("pid")
+    status["environment"] = payload.get("environment")
+    if not isinstance(pid, int):
+        return status
+    status["pid"] = pid
+
+    cmdline_path = Path("/proc") / str(pid) / "cmdline"
+    try:
+        cmdline = cmdline_path.read_bytes().decode("utf-8", errors="replace")
+    except OSError:
+        return status
+    status["running"] = "main.py" in cmdline
+    return status
+
+
+def _latest_event(event: str):
+    entries = read_structured_logs(limit=1, event=event)
+    return entries[0] if entries else None
+
+
+@routes.route("/healthz")
+def healthz():
+    return jsonify({"status": "ok"})
+
+
+@routes.route("/login", methods=["GET", "POST"])
+def login():
+    if not session_auth_enabled():
+        return (
+            render_template(
+                "login.html",
+                error=(
+                    "Autenticação por senha não está configurada. Gere um hash com "
+                    "`python src/app/hash_password.py` e defina DASHBOARD_PASSWORD_HASH no .env."
+                ),
+                csrf_token="",
+                disabled=True,
+            ),
+            503,
+        )
+
+    target = safe_redirect_target(request.args.get("next"))
+    if is_authenticated():
+        return redirect(target)
+
+    if request.method == "GET":
+        return render_template(
+            "login.html", error=None, csrf_token=ensure_csrf_token(), disabled=False
+        )
+
+    if not csrf_valid():
+        return (
+            render_template(
+                "login.html",
+                error="Sessão expirada. Tente novamente.",
+                csrf_token=ensure_csrf_token(),
+                disabled=False,
+            ),
+            400,
+        )
+
+    caller = client_key()
+    blocked_for = login_blocked_for(caller)
+    if blocked_for:
+        return (
+            render_template(
+                "login.html",
+                error=f"Muitas tentativas. Aguarde {blocked_for}s.",
+                csrf_token=ensure_csrf_token(),
+                disabled=False,
+            ),
+            429,
+        )
+
+    if not verify_password(request.form.get("password", "")):
+        register_failed_login(caller)
+        log_event(
+            logging.WARNING,
+            "Dashboard login failed",
+            event="dashboard_login_failed",
+            remote_addr=caller,
+        )
+        return (
+            render_template(
+                "login.html",
+                error="Senha inválida.",
+                csrf_token=ensure_csrf_token(),
+                disabled=False,
+            ),
+            401,
+        )
+
+    reset_login_attempts(caller)
+    start_session()
+    log_event(
+        logging.INFO,
+        "Dashboard login",
+        event="dashboard_login",
+        remote_addr=caller,
+    )
+    return redirect(target)
+
+
+@routes.route("/logout", methods=["POST"])
+def logout():
+    end_session()
+    return redirect(url_for("routes.login"))
+
+
 @routes.route("/")
 def dashboard():
     settings, _ = load_settings()
@@ -272,6 +420,176 @@ def get_logs():
         return jsonify({"error": "limit must be an integer"}), 400
     except Exception as e:
         return jsonify({"error": f"Erro ao carregar logs: {str(e)}"}), 500
+
+
+def _yaml_settings():
+    """Settings exactly as written in the YAML, ignoring the .env override.
+
+    `load_settings` lets TRADING_ENV shadow `environment`. The config editor must
+    edit the file itself, otherwise opening and saving the form would silently
+    rewrite the file's environment with the .env value.
+    """
+    settings, env = load_settings()
+    yaml_env = yaml_environment()
+    if yaml_env and yaml_env != settings.environment:
+        settings = settings.model_copy(update={"environment": yaml_env})
+    return settings, env
+
+
+def _environment_info(effective: str) -> dict:
+    yaml_env = yaml_environment()
+    override = environment_override()
+    return {
+        "effective": effective,
+        "yaml": yaml_env,
+        "override": override,
+        "source": ".env" if override else "trading.yaml",
+        "conflict": bool(override and yaml_env and override != yaml_env),
+    }
+
+
+def _config_envelope(settings) -> dict:
+    effective = environment_override() or settings.environment
+    return {
+        "config": settings.model_dump(mode="python"),
+        "environment": _environment_info(effective),
+    }
+
+
+def _evaluate_payload(settings, payload):
+    """Validate a payload against the full model and classify its impact.
+
+    Returns (candidate, response_dict). `candidate` is None when invalid.
+    """
+    try:
+        candidate = apply_config_payload(settings, payload or {})
+    except ValidationError as exc:
+        return None, {"valid": False, "errors": validation_field_errors(exc)}
+    except (ValueError, TypeError) as exc:
+        return None, {"valid": False, "errors": [{"field": "", "message": str(exc)}]}
+
+    hard, soft = classify_settings_delta(settings, candidate)
+    return candidate, {
+        "valid": True,
+        "errors": [],
+        "hard": hard,
+        "soft": soft,
+        "changed": bool(hard or soft),
+    }
+
+
+@routes.route("/api/config/schema", methods=["GET"])
+def get_config_schema():
+    try:
+        return jsonify(config_schema())
+    except Exception as e:
+        return jsonify({"error": f"Erro ao carregar schema: {str(e)}"}), 500
+
+
+@routes.route("/api/config", methods=["GET"])
+def api_get_config():
+    try:
+        settings, _ = _yaml_settings()
+        return jsonify(_config_envelope(settings))
+    except Exception as e:
+        return jsonify({"error": f"Erro ao carregar config: {str(e)}"}), 500
+
+
+@routes.route("/api/config/validate", methods=["POST"])
+def api_validate_config():
+    """Dry-run: reports field errors and restart impact without writing."""
+    try:
+        settings, _ = _yaml_settings()
+        _, result = _evaluate_payload(settings, request.get_json(silent=True))
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": f"Erro ao validar config: {str(e)}"}), 500
+
+
+@routes.route("/api/config", methods=["POST"])
+def api_save_config():
+    try:
+        settings, _ = _yaml_settings()
+        candidate, result = _evaluate_payload(settings, request.get_json(silent=True))
+        if candidate is None:
+            return jsonify(result), 400
+
+        save_settings(candidate)
+        log_event(
+            logging.INFO,
+            "Dashboard saved config",
+            event="dashboard_config_saved",
+            soft=result["soft"],
+            hard=result["hard"],
+        )
+        result["saved"] = True
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": f"Erro ao salvar config: {str(e)}"}), 500
+
+
+@routes.route("/api/config/history", methods=["GET"])
+def api_config_history():
+    try:
+        return jsonify({"backups": list_config_backups()})
+    except Exception as e:
+        return jsonify({"error": f"Erro ao listar backups: {str(e)}"}), 500
+
+
+@routes.route("/api/config/revert", methods=["POST"])
+def api_revert_config():
+    try:
+        payload = request.get_json(silent=True) or {}
+        name = str(payload.get("name", "")).strip()
+        if not name:
+            return jsonify({"error": "Informe o backup a restaurar"}), 400
+
+        settings, _ = _yaml_settings()
+        restored = restore_config_backup(name)
+        hard, soft = classify_settings_delta(settings, restored)
+        log_event(
+            logging.WARNING,
+            "Dashboard reverted config",
+            event="dashboard_config_reverted",
+            backup=name,
+            soft=soft,
+            hard=hard,
+        )
+        return jsonify({"restored": name, "hard": hard, "soft": soft})
+    except ValidationError as e:
+        return jsonify({"error": "Backup inválido", "errors": validation_field_errors(e)}), 400
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"Erro ao restaurar backup: {str(e)}"}), 500
+
+
+@routes.route("/api/status", methods=["GET"])
+def api_status():
+    try:
+        settings, env = _yaml_settings()
+        envelope = _config_envelope(settings)
+        path = env.config_path
+        modified_at = None
+        if path.exists():
+            modified_at = datetime.fromtimestamp(
+                path.stat().st_mtime, tz=timezone.utc
+            ).isoformat()
+
+        return jsonify(
+            {
+                "bot": _bot_process_status(),
+                "environment": envelope["environment"],
+                "config": {"path": str(path), "modified_at": modified_at},
+                "events": {
+                    "last_reload": _latest_event("config_reloaded"),
+                    "last_restart_required": _latest_event("config_requires_restart"),
+                },
+                "backups": len(list_config_backups()),
+            }
+        )
+    except Exception as e:
+        return jsonify({"error": f"Erro ao carregar status: {str(e)}"}), 500
 
 
 @routes.route("/update-config", methods=["POST"])

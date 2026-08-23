@@ -6,6 +6,9 @@ data/
 src/logs/
 .tools/
 
+# Config snapshots written before each dashboard save
+config/history/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

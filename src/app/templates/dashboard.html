@@ -3,198 +3,643 @@
 {% block content %}
 <h1>Config</h1>
 <p class="subtitle">
-    Risco, timing, regime e grid valem no próximo ciclo. Troca de par ou
-    estratégia principal exige restart do bot.
+    Cada campo abaixo vem direto do schema validado em
+    <code>config/trading.yaml</code>. O impacto da mudança é calculado antes de
+    salvar, e a versão anterior é sempre guardada em <code>config/history</code>.
 </p>
 
+<div id="status-panel" class="status-panel"></div>
+<div id="env-notice"></div>
+
 <form id="config-form" class="form-card">
-    <div class="field">
-        <label for="MAIN_STRATEGY">Estratégia principal</label>
-        <select name="MAIN_STRATEGY" id="MAIN_STRATEGY">
-            <option value="weapon_candle">Weapon Candle</option>
-            <option value="atr_trend">ATR Trend (4h)</option>
-            <option value="ut_bot_alerts">UT Bot Alerts</option>
-            <option value="vortex">Vortex</option>
-            <option value="moving_average">Média Móvel</option>
-            <option value="moving_average_antecipation">
-                Média Móvel Antecipação
-            </option>
-            <option value="rsi">RSI</option>
-            <option value="ma_rsi_volume">MA + RSI + Volume</option>
-        </select>
+    <div id="sections-container"></div>
+    <div id="general-error" class="impact-banner error" hidden></div>
+    <div id="impact-banner" class="impact-banner" hidden></div>
+    <div class="form-actions">
+        <button type="button" id="check-btn" class="icon-btn">
+            <span class="material-symbols-outlined">rule</span>
+            Verificar impacto
+        </button>
+        <button type="submit" class="btn-primary">Salvar</button>
+        <span id="dirty-flag" class="dirty-flag" hidden>alterações não salvas</span>
     </div>
-
-    <div class="field">
-        <label for="FALLBACK_ACTIVATED">Estratégia de fallback</label>
-        <select name="FALLBACK_ACTIVATED" id="FALLBACK_ACTIVATED">
-            <option value="true">Ativada</option>
-            <option value="false">Desativada</option>
-        </select>
-    </div>
-
-    <div class="row">
-        <div class="field">
-            <label for="ACCEPTABLE_LOSS_PERCENTAGE">Perda aceitável (%)</label>
-            <input
-                type="number"
-                name="ACCEPTABLE_LOSS_PERCENTAGE"
-                id="ACCEPTABLE_LOSS_PERCENTAGE"
-                step="0.1"
-            />
-        </div>
-        <div class="field">
-            <label for="STOP_LOSS_PERCENTAGE">Stop loss (%)</label>
-            <input
-                type="number"
-                name="STOP_LOSS_PERCENTAGE"
-                id="STOP_LOSS_PERCENTAGE"
-                step="0.1"
-            />
-        </div>
-    </div>
-
-    <div class="row">
-        <div class="field">
-            <label for="TEMPO_ENTRE_TRADES">Intervalo entre trades (s)</label>
-            <input
-                type="number"
-                name="TEMPO_ENTRE_TRADES"
-                id="TEMPO_ENTRE_TRADES"
-            />
-        </div>
-        <div class="field">
-            <label for="DELAY_ENTRE_ORDENS">Atraso entre ordens (s)</label>
-            <input
-                type="number"
-                name="DELAY_ENTRE_ORDENS"
-                id="DELAY_ENTRE_ORDENS"
-            />
-        </div>
-    </div>
-
-    <h2 style="font-size: 1.05rem; font-weight: 500; margin: 8px 0 4px">
-        Moedas negociadas
-    </h2>
-    <div id="stocks-container"></div>
-
-    <button type="submit" class="btn-primary">Salvar</button>
 </form>
+
+<details class="form-card history-card">
+    <summary>Histórico de versões</summary>
+    <p class="field-help">
+        Cada save guarda uma cópia byte a byte do YAML anterior, com comentários
+        preservados. Restaurar grava a versão escolhida como configuração ativa.
+    </p>
+    <div id="history-container"></div>
+</details>
+
 <div id="toast" class="toast"></div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+    const OPEN_BY_DEFAULT = new Set(["", "strategy", "risk", "timing", "assets"]);
+
+    let schema = null;
+    let baseline = null;
+    let dirty = false;
+
     function showToast(text) {
         const toast = document.getElementById("toast");
         toast.textContent = text;
         toast.style.display = "block";
         setTimeout(() => {
             toast.style.display = "none";
-        }, 2800);
+        }, 4000);
     }
 
-    function escapeHtml(text) {
-        return String(text)
-            .replaceAll("&", "&amp;")
-            .replaceAll("<", "&lt;")
-            .replaceAll(">", "&gt;")
-            .replaceAll('"', "&quot;")
-            .replaceAll("'", "&#39;");
+    function getByPath(obj, path) {
+        return path
+            .split(".")
+            .reduce((acc, key) => (acc === null || acc === undefined ? undefined : acc[key]), obj);
     }
 
-    async function carregarConfiguracao() {
-        const response = await traderbotFetch("/get-config");
-        const data = await response.json();
-
-        document.getElementById("MAIN_STRATEGY").value = data.MAIN_STRATEGY;
-        document.getElementById("FALLBACK_ACTIVATED").value =
-            data.FALLBACK_ACTIVATED.toString();
-        document.getElementById("ACCEPTABLE_LOSS_PERCENTAGE").value =
-            data.ACCEPTABLE_LOSS_PERCENTAGE;
-        document.getElementById("STOP_LOSS_PERCENTAGE").value =
-            data.STOP_LOSS_PERCENTAGE;
-        document.getElementById("TEMPO_ENTRE_TRADES").value =
-            data.TEMPO_ENTRE_TRADES;
-        document.getElementById("DELAY_ENTRE_ORDENS").value =
-            data.DELAY_ENTRE_ORDENS;
-
-        const stocksContainer = document.getElementById("stocks-container");
-        stocksContainer.innerHTML = "";
-        data.stocks_traded_list.forEach((stock, index) => {
-            stocksContainer.innerHTML += `
-                <div class="stock-row">
-                    <div class="field">
-                        <label>Moeda ${index + 1}</label>
-                        <input type="text" class="stock-code" value="${escapeHtml(stock.stockCode)}">
-                    </div>
-                    <div class="row">
-                        <div class="field">
-                            <label>Par</label>
-                            <input type="text" class="stock-operation" value="${escapeHtml(stock.operationCode)}">
-                        </div>
-                        <div class="field">
-                            <label>Quantidade</label>
-                            <input type="number" class="stock-quantity" step="any" value="${escapeHtml(stock.tradedQuantity)}">
-                        </div>
-                    </div>
-                </div>
-            `;
-        });
+    function setByPath(obj, path, value) {
+        const parts = path.split(".");
+        let node = obj;
+        for (let i = 0; i < parts.length - 1; i += 1) {
+            if (typeof node[parts[i]] !== "object" || node[parts[i]] === null) {
+                node[parts[i]] = {};
+            }
+            node = node[parts[i]];
+        }
+        node[parts[parts.length - 1]] = value;
     }
 
-    function buildStocksTradedList() {
-        const stocks = [];
-        document.querySelectorAll("#stocks-container .stock-row").forEach((row) => {
-            stocks.push({
-                stockCode: row.querySelector(".stock-code").value.trim(),
-                operationCode: row.querySelector(".stock-operation").value.trim(),
-                tradedQuantity: parseFloat(
-                    row.querySelector(".stock-quantity").value
-                ),
+    function markDirty() {
+        dirty = true;
+        document.getElementById("dirty-flag").hidden = false;
+    }
+
+    function clearDirty() {
+        dirty = false;
+        document.getElementById("dirty-flag").hidden = true;
+    }
+
+    window.addEventListener("beforeunload", (event) => {
+        if (dirty) {
+            event.preventDefault();
+            event.returnValue = "";
+        }
+    });
+
+    function buildInput(field, value) {
+        let input;
+        if (field.type === "select") {
+            input = document.createElement("select");
+            (field.options || []).forEach((option) => {
+                const node = document.createElement("option");
+                node.value = option;
+                node.textContent = option;
+                input.appendChild(node);
             });
-        });
-        return stocks;
+            input.value = value === undefined || value === null ? "" : String(value);
+        } else if (field.type === "bool") {
+            input = document.createElement("select");
+            [
+                ["true", "Sim"],
+                ["false", "Não"],
+            ].forEach(([optionValue, label]) => {
+                const node = document.createElement("option");
+                node.value = optionValue;
+                node.textContent = label;
+                input.appendChild(node);
+            });
+            input.value = value ? "true" : "false";
+        } else if (field.type === "json") {
+            input = document.createElement("textarea");
+            input.rows = 4;
+            input.value = JSON.stringify(value === undefined ? {} : value, null, 2);
+        } else if (field.type === "int" || field.type === "float") {
+            input = document.createElement("input");
+            input.type = "number";
+            input.step = field.type === "int" ? "1" : "any";
+            const min = field.ge !== undefined ? field.ge : field.gt;
+            const max = field.le !== undefined ? field.le : field.lt;
+            if (min !== undefined) input.min = min;
+            if (max !== undefined) input.max = max;
+            input.value = value === undefined || value === null ? "" : value;
+        } else {
+            input = document.createElement("input");
+            input.type = "text";
+            input.value = value === undefined || value === null ? "" : value;
+        }
+        input.dataset.type = field.type;
+        input.addEventListener("input", markDirty);
+        input.addEventListener("change", markDirty);
+        return input;
     }
 
-    document.getElementById("config-form").onsubmit = async function (e) {
-        e.preventDefault();
-        const jsonData = {
-            MAIN_STRATEGY: document.getElementById("MAIN_STRATEGY").value,
-            FALLBACK_ACTIVATED:
-                document.getElementById("FALLBACK_ACTIVATED").value === "true",
-            ACCEPTABLE_LOSS_PERCENTAGE: parseFloat(
-                document.getElementById("ACCEPTABLE_LOSS_PERCENTAGE").value
-            ),
-            STOP_LOSS_PERCENTAGE: parseFloat(
-                document.getElementById("STOP_LOSS_PERCENTAGE").value
-            ),
-            TEMPO_ENTRE_TRADES: parseInt(
-                document.getElementById("TEMPO_ENTRE_TRADES").value,
-                10
-            ),
-            DELAY_ENTRE_ORDENS: parseInt(
-                document.getElementById("DELAY_ENTRE_ORDENS").value,
-                10
-            ),
-            stocks_traded_list: buildStocksTradedList(),
-        };
+    function buildField(field, value, path, scope) {
+        const wrap = document.createElement("div");
+        wrap.className = "field";
+        if (field.sensitive) wrap.classList.add("sensitive");
 
-        const response = await traderbotFetch("/update-config", {
+        const label = document.createElement("label");
+        label.textContent = field.label;
+        if (field.sensitive) {
+            const mark = document.createElement("span");
+            mark.className = "sensitive-mark";
+            mark.textContent = "sensível";
+            label.appendChild(mark);
+        }
+        wrap.appendChild(label);
+
+        const input = buildInput(field, value);
+        input.dataset.path = path;
+        input.dataset.scope = scope;
+        input.dataset.name = field.name;
+        label.htmlFor = input.id = "cfg-" + path.replace(/\./g, "-");
+        wrap.appendChild(input);
+
+        if (field.description) {
+            const help = document.createElement("p");
+            help.className = "field-help";
+            help.textContent = field.description;
+            wrap.appendChild(help);
+        }
+
+        const error = document.createElement("p");
+        error.className = "field-error";
+        error.dataset.errorFor = path;
+        wrap.appendChild(error);
+        return wrap;
+    }
+
+    function buildRepeaterRow(spec, item, index, prefix, onRemove) {
+        const row = document.createElement("div");
+        row.className = "repeater-row";
+        row.dataset.repeaterRow = prefix;
+
+        const grid = document.createElement("div");
+        grid.className = "repeater-grid";
+        spec.fields.forEach((field) => {
+            const path = `${prefix}.${index}.${field.name}`;
+            grid.appendChild(
+                buildField(field, item ? item[field.name] : undefined, path, "row")
+            );
+        });
+        row.appendChild(grid);
+
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "icon-btn danger";
+        remove.title = "Remover";
+        remove.innerHTML = '<span class="material-symbols-outlined">delete</span>';
+        remove.addEventListener("click", () => {
+            onRemove();
+            markDirty();
+        });
+        row.appendChild(remove);
+        return row;
+    }
+
+    function renderRepeater(container, spec, items, prefix) {
+        const values = Array.isArray(items) ? items.slice() : [];
+
+        function draw() {
+            container.innerHTML = "";
+            values.forEach((item, index) => {
+                container.appendChild(
+                    buildRepeaterRow(spec, item, index, prefix, () => {
+                        values.splice(index, 1);
+                        draw();
+                    })
+                );
+            });
+
+            const add = document.createElement("button");
+            add.type = "button";
+            add.className = "icon-btn";
+            add.innerHTML =
+                '<span class="material-symbols-outlined">add</span> Adicionar';
+            add.addEventListener("click", () => {
+                values.push({});
+                draw();
+                markDirty();
+            });
+            container.appendChild(add);
+        }
+
+        draw();
+    }
+
+    function buildSection(title, key, bodyBuilder) {
+        const details = document.createElement("details");
+        details.className = "config-section";
+        details.open = OPEN_BY_DEFAULT.has(key);
+        const summary = document.createElement("summary");
+        summary.textContent = title;
+        details.appendChild(summary);
+        const body = document.createElement("div");
+        body.className = "config-section-body";
+        bodyBuilder(body);
+        details.appendChild(body);
+        return details;
+    }
+
+    function renderForm(config) {
+        const container = document.getElementById("sections-container");
+        container.innerHTML = "";
+
+        schema.sections.forEach((section) => {
+            container.appendChild(
+                buildSection(section.title, section.key, (body) => {
+                    const grid = document.createElement("div");
+                    grid.className = "field-grid";
+                    section.fields.forEach((field) => {
+                        grid.appendChild(
+                            buildField(
+                                field,
+                                getByPath(config, field.path),
+                                field.path,
+                                "section"
+                            )
+                        );
+                    });
+                    body.appendChild(grid);
+
+                    if (section.key === "risk") {
+                        const heading = document.createElement("h3");
+                        heading.className = "repeater-title";
+                        heading.textContent = schema.take_profit.title;
+                        body.appendChild(heading);
+                        const holder = document.createElement("div");
+                        holder.id = "take-profit-container";
+                        body.appendChild(holder);
+                        renderRepeater(
+                            holder,
+                            schema.take_profit,
+                            config.risk ? config.risk.take_profit : [],
+                            "risk.take_profit"
+                        );
+                    }
+                })
+            );
+        });
+
+        container.appendChild(
+            buildSection(schema.assets.title, "assets", (body) => {
+                const holder = document.createElement("div");
+                holder.id = "assets-container";
+                body.appendChild(holder);
+                renderRepeater(holder, schema.assets, config.assets, "assets");
+            })
+        );
+    }
+
+    function parseValue(input) {
+        const type = input.dataset.type;
+        const raw = input.value;
+        if (type === "bool") return raw === "true";
+        if (type === "json") return JSON.parse(raw || "{}");
+        if (type === "int" || type === "float") {
+            if (raw.trim() === "") return null;
+            const parsed = type === "int" ? parseInt(raw, 10) : parseFloat(raw);
+            // Keep the raw string when unparseable so the server reports the field error.
+            return Number.isNaN(parsed) ? raw : parsed;
+        }
+        return raw;
+    }
+
+    function collectRepeater(prefix) {
+        const rows = [];
+        document
+            .querySelectorAll(`[data-repeater-row="${prefix}"]`)
+            .forEach((row) => {
+                const item = {};
+                row.querySelectorAll("[data-path]").forEach((input) => {
+                    item[input.dataset.name] = parseValue(input);
+                });
+                rows.push(item);
+            });
+        return rows;
+    }
+
+    function collectPayload() {
+        const payload = {};
+        document
+            .querySelectorAll('#sections-container [data-scope="section"]')
+            .forEach((input) => {
+                setByPath(payload, input.dataset.path, parseValue(input));
+            });
+        payload.assets = collectRepeater("assets");
+        payload.risk = payload.risk || {};
+        payload.risk.take_profit = collectRepeater("risk.take_profit");
+        return payload;
+    }
+
+    function clearErrors() {
+        document
+            .querySelectorAll(".field-error")
+            .forEach((node) => (node.textContent = ""));
+        document
+            .querySelectorAll(".field.invalid")
+            .forEach((node) => node.classList.remove("invalid"));
+        const general = document.getElementById("general-error");
+        general.hidden = true;
+        general.textContent = "";
+    }
+
+    function renderErrors(errors) {
+        const orphans = [];
+        errors.forEach((error) => {
+            const target = document.querySelector(
+                `[data-error-for="${error.field}"]`
+            );
+            if (target) {
+                target.textContent = error.message;
+                target.closest(".field").classList.add("invalid");
+                const section = target.closest("details");
+                if (section) section.open = true;
+            } else {
+                orphans.push(
+                    error.field ? `${error.field}: ${error.message}` : error.message
+                );
+            }
+        });
+        if (orphans.length) {
+            const general = document.getElementById("general-error");
+            general.textContent = orphans.join(" · ");
+            general.hidden = false;
+        }
+    }
+
+    function renderImpact(result) {
+        const banner = document.getElementById("impact-banner");
+        banner.className = "impact-banner";
+        if (!result.changed) {
+            banner.classList.add("neutral");
+            banner.textContent = "Nenhuma alteração em relação ao arquivo salvo.";
+            banner.hidden = false;
+            return;
+        }
+        const lines = [];
+        if (result.soft.length) {
+            lines.push(`Aplica no próximo ciclo do bot: ${result.soft.join(", ")}.`);
+        }
+        if (result.hard.length) {
+            lines.push(`Exige restart do bot: ${result.hard.join(", ")}.`);
+            banner.classList.add("warn");
+        } else {
+            banner.classList.add("info");
+        }
+        banner.textContent = lines.join(" ");
+        banner.hidden = false;
+    }
+
+    function sensitiveChanges(payload) {
+        const changed = [];
+        (schema.sensitive_fields || []).forEach((path) => {
+            if (path.startsWith("assets.")) return;
+            const before = JSON.stringify(getByPath(baseline, path));
+            const after = JSON.stringify(getByPath(payload, path));
+            if (before !== after) {
+                changed.push(`${path}: ${before} → ${after}`);
+            }
+        });
+        const beforeAssets = JSON.stringify(baseline.assets || []);
+        if (beforeAssets !== JSON.stringify(payload.assets || [])) {
+            changed.push("assets (par, quantidade ou percentual)");
+        }
+        return changed;
+    }
+
+    async function evaluate(payload) {
+        const response = await traderbotFetch("/api/config/validate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(jsonData),
+            body: JSON.stringify(payload),
         });
+        return response.json();
+    }
 
-        if (!response.ok) {
-            const error = await response.json();
-            showToast(error.error || "Erro ao salvar config.");
+    function safeCollect() {
+        try {
+            return collectPayload();
+        } catch (error) {
+            const general = document.getElementById("general-error");
+            general.textContent = `JSON inválido em um dos campos de parâmetros: ${error.message}`;
+            general.hidden = false;
+            return null;
+        }
+    }
+
+    document.getElementById("check-btn").addEventListener("click", async () => {
+        clearErrors();
+        const payload = safeCollect();
+        if (!payload) return;
+        const result = await evaluate(payload);
+        if (!result.valid) {
+            document.getElementById("impact-banner").hidden = true;
+            renderErrors(result.errors);
+            return;
+        }
+        renderImpact(result);
+    });
+
+    document.getElementById("config-form").onsubmit = async function (event) {
+        event.preventDefault();
+        clearErrors();
+        const payload = safeCollect();
+        if (!payload) return;
+
+        const result = await evaluate(payload);
+        if (!result.valid) {
+            document.getElementById("impact-banner").hidden = true;
+            renderErrors(result.errors);
+            showToast("Corrija os campos destacados.");
+            return;
+        }
+        renderImpact(result);
+
+        if (!result.changed) {
+            showToast("Nada para salvar.");
             return;
         }
 
-        showToast("Config salva. Limites valem no próximo ciclo; par/estratégia exigem restart.");
-        carregarConfiguracao();
+        const warnings = [];
+        if (result.hard.length) {
+            warnings.push(`Exige restart do bot: ${result.hard.join(", ")}.`);
+        }
+        const sensitive = sensitiveChanges(payload);
+        if (sensitive.length) {
+            warnings.push(`Campos sensíveis alterados:\n- ${sensitive.join("\n- ")}`);
+        }
+        if (warnings.length && !window.confirm(`${warnings.join("\n\n")}\n\nConfirmar?`)) {
+            return;
+        }
+
+        const response = await traderbotFetch("/api/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        const saved = await response.json();
+        if (!response.ok) {
+            if (saved.errors) renderErrors(saved.errors);
+            showToast(saved.error || "Erro ao salvar config.");
+            return;
+        }
+
+        clearDirty();
+        showToast(
+            saved.hard.length
+                ? `Config salva. Reinicie o bot para aplicar: ${saved.hard.join(", ")}.`
+                : "Config salva. Aplica no próximo ciclo do bot."
+        );
+        await loadAll();
     };
 
-    carregarConfiguracao();
+    function renderEnvironmentNotice(info) {
+        const holder = document.getElementById("env-notice");
+        holder.innerHTML = "";
+        if (!info.override) return;
+
+        const banner = document.createElement("div");
+        banner.className = info.conflict
+            ? "impact-banner warn"
+            : "impact-banner neutral";
+        banner.textContent = info.conflict
+            ? `TRADING_ENV=${info.override} no .env está sobrepondo environment: ${info.yaml} do YAML. ` +
+              `O bot opera em ${info.override}. Editar o campo aqui não muda isso — ajuste o .env.`
+            : `O ambiente efetivo vem de TRADING_ENV=${info.override} no .env.`;
+        holder.appendChild(banner);
+    }
+
+    function renderStatus(status) {
+        const panel = document.getElementById("status-panel");
+        panel.innerHTML = "";
+        const items = [
+            [
+                "Bot",
+                status.bot.running
+                    ? `rodando (pid ${status.bot.pid})`
+                    : "não detectado",
+                status.bot.running ? "up" : "down",
+            ],
+            ["Ambiente efetivo", status.environment.effective, ""],
+            [
+                "YAML salvo em",
+                status.config.modified_at
+                    ? new Date(status.config.modified_at).toLocaleString("pt-BR")
+                    : "-",
+                "",
+            ],
+        ];
+        if (status.events.last_restart_required) {
+            const fields = status.events.last_restart_required.fields || [];
+            items.push(["Restart pendente", fields.join(", ") || "sim", "warn"]);
+        } else if (status.events.last_reload) {
+            const fields = status.events.last_reload.fields || [];
+            items.push(["Último reload do bot", fields.join(", ") || "-", ""]);
+        }
+
+        items.forEach(([label, value, tone]) => {
+            const cell = document.createElement("div");
+            cell.className = "status-item";
+            const name = document.createElement("span");
+            name.className = "status-label";
+            name.textContent = label;
+            const text = document.createElement("span");
+            text.className = "status-value" + (tone ? ` ${tone}` : "");
+            text.textContent = value;
+            cell.appendChild(name);
+            cell.appendChild(text);
+            panel.appendChild(cell);
+        });
+    }
+
+    function renderHistory(backups) {
+        const container = document.getElementById("history-container");
+        container.innerHTML = "";
+        if (!backups.length) {
+            const empty = document.createElement("p");
+            empty.className = "field-help";
+            empty.textContent = "Nenhuma versão anterior guardada ainda.";
+            container.appendChild(empty);
+            return;
+        }
+
+        backups.forEach((backup) => {
+            const row = document.createElement("div");
+            row.className = "backup-row";
+            const label = document.createElement("span");
+            label.textContent = new Date(backup.saved_at).toLocaleString("pt-BR");
+            const name = document.createElement("span");
+            name.className = "field-help";
+            name.textContent = backup.name;
+            const restore = document.createElement("button");
+            restore.type = "button";
+            restore.className = "icon-btn";
+            restore.textContent = "Restaurar";
+            restore.addEventListener("click", async () => {
+                if (
+                    !window.confirm(
+                        `Restaurar ${backup.name} como configuração ativa? ` +
+                            "A versão atual será guardada no histórico."
+                    )
+                ) {
+                    return;
+                }
+                const response = await traderbotFetch("/api/config/revert", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: backup.name }),
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    showToast(result.error || "Erro ao restaurar backup.");
+                    return;
+                }
+                clearDirty();
+                showToast(
+                    result.hard.length
+                        ? `Restaurado. Reinicie o bot para aplicar: ${result.hard.join(", ")}.`
+                        : "Restaurado. Aplica no próximo ciclo do bot."
+                );
+                await loadAll();
+            });
+            row.appendChild(label);
+            row.appendChild(name);
+            row.appendChild(restore);
+            container.appendChild(row);
+        });
+    }
+
+    async function loadAll() {
+        const [schemaRes, configRes] = await Promise.all([
+            traderbotFetch("/api/config/schema"),
+            traderbotFetch("/api/config"),
+        ]);
+        if (!schemaRes.ok || !configRes.ok) {
+            showToast("Não foi possível carregar a configuração.");
+            return;
+        }
+        schema = await schemaRes.json();
+        const envelope = await configRes.json();
+        baseline = envelope.config;
+
+        renderEnvironmentNotice(envelope.environment);
+        renderForm(baseline);
+        clearErrors();
+        document.getElementById("impact-banner").hidden = true;
+        clearDirty();
+
+        const [statusRes, historyRes] = await Promise.all([
+            traderbotFetch("/api/status"),
+            traderbotFetch("/api/config/history"),
+        ]);
+        if (statusRes.ok) renderStatus(await statusRes.json());
+        if (historyRes.ok) renderHistory((await historyRes.json()).backups);
+    }
+
+    loadAll();
 </script>
 {% endblock %}

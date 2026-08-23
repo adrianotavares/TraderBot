@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Entrar - TraderBot</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap"
+            rel="stylesheet"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"
+            rel="stylesheet"
+        />
+        <link
+            rel="stylesheet"
+            href="{{ url_for('static', filename='css/app.css') }}"
+        />
+    </head>
+    <body class="login-body">
+        <main class="login-main">
+            <div class="form-card login-card">
+                <div class="brand login-brand">
+                    <span class="material-symbols-outlined">candlestick_chart</span>
+                    TraderBot
+                </div>
+
+                {% if error %}
+                <p class="login-error">{{ error }}</p>
+                {% endif %}
+
+                {% if not disabled %}
+                <form method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                    <div class="field">
+                        <label for="password">Senha</label>
+                        <input
+                            type="password"
+                            id="password"
+                            name="password"
+                            autocomplete="current-password"
+                            autofocus
+                            required
+                        />
+                    </div>
+                    <button type="submit" class="btn-primary login-submit">
+                        Entrar
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </main>
+    </body>
+</html>

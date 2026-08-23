@@ -12,6 +12,8 @@ TraderBot é um robô de negociação automatizada desenvolvido em Python para o
 * **Breakout detector** para reativar `atr_trend` após rompimento com volume
 * **Multi-asset**: uma thread por ativo (ex.: BTC + ETH), com `thread_lock` opcional
 * **Configuração unificada** via `config/trading.yaml` + dashboard Flask
+* **Dashboard servido por WSGI de produção** (waitress), com login por senha e sessão assinada
+* **Editor de configuração completo**: formulário gerado do schema, preview de impacto e histórico de versões
 * **Testnet e mainnet** controlados por `TRADING_ENV` no `.env`
 * **Persistência de estado** em SQLite (`data/traderbot.db`) com modo ativo (`trend` / `grid`)
 * **Guardrails de risco**: min notional, limites diários, circuit breaker, limites de grid
@@ -45,9 +47,20 @@ BINANCE_SECRET_KEY="sua_secret_key"
 TRADING_ENV=testnet
 LOG_LEVEL=INFO
 TRADING_CONFIG=config/trading.yaml
+
+# Dashboard
+FLASK_HOST=127.0.0.1
+FLASK_PORT=5000
+WSGI_THREADS=8
+DASHBOARD_PASSWORD_HASH=
+FLASK_TOKEN=
+FLASK_SECRET_KEY=
+FLASK_COOKIE_SECURE=0
 ```
 
-`TRADING_ENV` deve coincidir com `environment` em `config/trading.yaml` (`testnet` ou `mainnet`).
+`TRADING_ENV` deve coincidir com `environment` em `config/trading.yaml` (`testnet` ou `mainnet`). Quando definido, ele **sobrepõe** o valor do YAML — o dashboard sinaliza esse conflito na página de Config.
+
+Variáveis do dashboard estão detalhadas em [Dashboard web](#dashboard-web). Use `TRADERBOT_ENV_FILE` para apontar para outro arquivo `.env`.
 
 ### 2. Configuração de trading (`config/trading.yaml`)
 
@@ -248,13 +261,62 @@ O bot inicia uma thread por ativo configurado. Com `thread_lock: true`, os ciclo
 
 **Importante:** rode apenas **uma instância** do bot por vez. Múltiplos processos `src/main.py` duplicam chamadas à API e geram logs conflitantes.
 
-### Dashboard web (opcional)
+### Dashboard web
 
 ```bash
 PYTHONPATH=src python src/app/app.py
 ```
 
-Acesse `http://localhost:5000` para o Tracking (log estruturado) e `http://localhost:5000/config` para editar o YAML. O Flask escuta só em `127.0.0.1` por padrão (`FLASK_HOST` / `FLASK_PORT` para alterar). **Reinicie o bot** após salvar.
+O dashboard roda sobre **waitress**, um servidor WSGI de produção — não há mais o aviso `This is a development server`. São páginas de Tracking (`/`), Profit (`/profit`) e Config (`/config`), mais `/healthz` para healthcheck.
+
+Deliberadamente é **um único processo** com um pool de threads (`WSGI_THREADS`, padrão 8). As rotas mantêm cache de portfólio, cache de histórico e um cliente Binance reaproveitado no próprio processo; múltiplos workers duplicariam esse estado, abririam conexões redundantes e fariam escritas concorrentes no SQLite. Para iterar localmente com reload automático, use `FLASK_DEV_SERVER=1`.
+
+O bot continua sendo um processo separado (`src/main.py`). O dashboard não inicia threads de negociação.
+
+#### Autenticação
+
+Gere o hash da senha e coloque no `.env`:
+
+```bash
+python src/app/hash_password.py
+```
+
+Com `DASHBOARD_PASSWORD_HASH` definido, **todas** as páginas e endpoints exigem sessão autenticada; há tela de login em `/login`, logout na barra superior, sessão de 12h em cookie assinado (`HttpOnly`, `SameSite=Lax`), proteção CSRF em requisições que alteram estado e limite de 5 tentativas de login por IP a cada 5 minutos. Defina `FLASK_COOKIE_SECURE=1` quando estiver atrás de HTTPS.
+
+`FLASK_TOKEN` continua disponível para scripts, enviado no header `X-TraderBot-Token` ou como `Authorization: Bearer`. O token **não** é mais aceito via query string (`?token=`) nem exposto no HTML das páginas.
+
+Sem `DASHBOARD_PASSWORD_HASH`, o comportamento antigo é mantido para uso local: só os endpoints de API e de config são protegidos, e apenas se `FLASK_TOKEN` estiver definido.
+
+**Um bind fora de `127.0.0.1` exige `DASHBOARD_PASSWORD_HASH` e aborta a inicialização sem ele.** `FLASK_TOKEN` sozinho não serve: um token compartilhado não consegue autenticar um navegador sem ser embutido na página — era exatamente assim que ele vazava para qualquer visitante anônimo. Se você definir `FLASK_TOKEN` sem senha, as páginas carregam mas não conseguem ler a API, e um aviso é registrado no log ao subir.
+
+A chave de assinatura da sessão vem de `FLASK_SECRET_KEY`; se ausente, é gerada e persistida em `data/.flask_secret` com permissão `600`.
+
+#### Página de Config
+
+O formulário é gerado a partir do schema Pydantic, então expõe todas as seções do YAML (`strategy`, `risk`, `timing`, `assets`, `regime`, `grid`, `breakout`, `operation`, `alerts`) com rótulo, descrição e limites vindos do próprio modelo. Recursos:
+
+* **Preview de impacto** antes de salvar: "Verificar impacto" faz um dry-run que classifica a mudança em *aplica no próximo ciclo* ou *exige restart do bot*, usando a mesma lógica que o bot usa para recarregar o YAML
+* **Erros por campo**, destacados no input em vez de uma mensagem única
+* **Histórico de versões**: cada save guarda uma cópia byte a byte do YAML anterior em `config/history/` (últimas 20), preservando comentários que o `yaml.safe_dump` descartaria, com botão de restaurar
+* **Confirmação explícita** para campos sensíveis (ambiente, quantidade e percentual negociados, stop loss, perda diária máxima) e para mudanças que exigem restart
+* **Painel de status**: se o bot está rodando, ambiente efetivo e sua origem, data do último save e restart pendente
+* **Badge TESTNET/MAINNET** fixo na barra superior
+
+Mudanças de `risk`, `timing`, `regime`, `grid`, `breakout`, `alerts` e `operation` são recarregadas pelo bot no próximo ciclo. Troca de par, `environment`, `strategy.main` ou `timing.candle_period` exige **restart do bot** — o dashboard avisa quais.
+
+#### Endpoints da API
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| GET | `/api/config/schema` | Schema do formulário derivado dos modelos Pydantic |
+| GET | `/api/config` | Config atual do YAML + origem do `environment` |
+| POST | `/api/config/validate` | Dry-run: erros por campo e impacto, sem escrever |
+| POST | `/api/config` | Salva após validar, guardando backup |
+| GET | `/api/config/history` | Lista os backups disponíveis |
+| POST | `/api/config/revert` | Restaura um backup |
+| GET | `/api/status` | Estado do bot, do YAML e eventos de reload |
+| GET | `/api/portfolio`, `/api/profit`, `/api/logs` | Dados das páginas de Tracking e Profit |
+| GET | `/healthz` | Healthcheck, sem autenticação |
 
 ### Docker
 
@@ -262,7 +324,7 @@ Acesse `http://localhost:5000` para o Tracking (log estruturado) e `http://local
 docker compose up -d
 ```
 
-Serviços: `bot` (trading loop) e `dashboard` (porta `127.0.0.1:5000`).
+Serviços: `bot` (trading loop) e `dashboard` (porta `127.0.0.1:5000`, com healthcheck em `/healthz`). O serviço `dashboard` faz bind em `0.0.0.0` dentro do container, então exige `DASHBOARD_PASSWORD_HASH` ou `FLASK_TOKEN` no `.env`.
 
 ### Backtests
 
@@ -297,7 +359,7 @@ Warnings esporádicos `Retrying ... RemoteDisconnected` do urllib3 são normais 
 PYTHONPATH=src pytest tests/ -q
 ```
 
-Suíte atual cobre: `atr_trend`, `regime_detector`, `grid_spot`, `breakout_detector`, `trading_engine` (roteamento), `binance_client`, `risk_manager`, `state_store`, `order_executor`, `config`.
+Suíte atual cobre: `atr_trend`, `regime_detector`, `grid_spot`, `breakout_detector`, `trading_engine` (roteamento), `binance_client`, `risk_manager`, `state_store`, `order_executor`, `config`, a API de configuração do dashboard (`test_config_api.py`) e a autenticação do dashboard (`test_flask_security.py`).
 
 ## Checklist: Testnet → Mainnet
 

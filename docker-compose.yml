@@ -14,7 +14,10 @@ services:
     env_file: .env
     environment:
       FLASK_HOST: "0.0.0.0"
-      # Required when FLASK_HOST is not 127.0.0.1
+      # Required: a non-localhost bind refuses to start without it.
+      # Generate with: python src/app/hash_password.py
+      DASHBOARD_PASSWORD_HASH: ${DASHBOARD_PASSWORD_HASH:?defina DASHBOARD_PASSWORD_HASH no .env}
+      # Optional, for scripted API access only.
       FLASK_TOKEN: ${FLASK_TOKEN:-}
     ports:
       - "127.0.0.1:5000:5000"
@@ -22,4 +25,10 @@ services:
       - ./config:/app/config
       - ./data:/app/data
       - ./src/logs:/app/src/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/healthz').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped

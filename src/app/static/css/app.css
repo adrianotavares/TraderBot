@@ -70,6 +70,42 @@ nav a:hover {
     color: var(--md-primary);
 }
 
+.app-bar-end {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.app-bar-end form {
+    margin: 0;
+    display: flex;
+}
+
+.env-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-radius: 20px;
+    padding: 5px 12px;
+    background: #eceff1;
+    color: var(--md-on-surface-variant);
+    border: 1px solid var(--md-outline);
+}
+
+.env-badge.testnet {
+    background: #e3f2fd;
+    color: var(--md-info);
+    border-color: #90caf9;
+}
+
+.env-badge.mainnet {
+    background: #fce8e6;
+    color: var(--md-down);
+    border-color: #ef9a9a;
+}
+
 main {
     max-width: 880px;
     margin: 24px auto 48px;
@@ -336,13 +372,20 @@ h1 {
 }
 
 input,
-select {
+select,
+textarea {
     font: inherit;
     padding: 10px 12px;
     border: 1px solid var(--md-outline);
     border-radius: 8px;
     background: #fff;
     color: var(--md-on-surface);
+}
+
+textarea {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85rem;
+    resize: vertical;
 }
 
 .btn-primary {
@@ -361,6 +404,257 @@ select {
     margin-top: 8px;
 }
 
+.field-help {
+    margin: 0;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: var(--md-on-surface-variant);
+}
+
+.field-error {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--md-down);
+}
+
+.field-error:empty {
+    display: none;
+}
+
+.field.invalid input,
+.field.invalid select,
+.field.invalid textarea {
+    border-color: var(--md-down);
+    background: #fffafa;
+}
+
+.field label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sensitive-mark {
+    font-size: 0.65rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--md-warn);
+    border: 1px solid currentColor;
+    border-radius: 20px;
+    padding: 1px 7px;
+}
+
+.config-section {
+    border: 1px solid var(--md-outline);
+    border-radius: var(--md-radius);
+    margin-bottom: 12px;
+    background: var(--md-surface-container);
+}
+
+.config-section > summary {
+    cursor: pointer;
+    padding: 12px 16px;
+    font-weight: 500;
+    list-style: none;
+}
+
+.config-section > summary::marker,
+.config-section > summary::-webkit-details-marker {
+    display: none;
+}
+
+.config-section > summary::before {
+    content: "▸";
+    display: inline-block;
+    width: 16px;
+    color: var(--md-on-surface-variant);
+}
+
+.config-section[open] > summary::before {
+    content: "▾";
+}
+
+.config-section-body {
+    padding: 4px 16px 16px;
+    border-top: 1px solid var(--md-outline);
+}
+
+.field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 4px 16px;
+    padding-top: 12px;
+}
+
+.repeater-title {
+    font-size: 0.95rem;
+    font-weight: 500;
+    margin: 16px 0 4px;
+}
+
+.repeater-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    border-top: 1px solid var(--md-outline);
+    padding-top: 12px;
+    margin-top: 8px;
+}
+
+.repeater-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 4px 16px;
+}
+
+.icon-btn.danger {
+    color: var(--md-down);
+    border-color: #ef9a9a;
+    margin-top: 8px;
+}
+
+.impact-banner {
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin: 16px 0 0;
+    font-size: 0.88rem;
+    line-height: 1.45;
+    border: 1px solid var(--md-outline);
+    background: #f5f5f2;
+    white-space: pre-line;
+}
+
+.impact-banner.info {
+    background: #e3f2fd;
+    border-color: #90caf9;
+    color: #0d47a1;
+}
+
+.impact-banner.warn {
+    background: #fff3e0;
+    border-color: #ffcc80;
+    color: #a14a00;
+}
+
+.impact-banner.error {
+    background: #fce8e6;
+    border-color: #ef9a9a;
+    color: #8c1d18;
+}
+
+.impact-banner.neutral {
+    color: var(--md-on-surface-variant);
+}
+
+.form-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.dirty-flag {
+    font-size: 0.8rem;
+    color: var(--md-warn);
+}
+
+.status-panel {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 32px;
+    background: var(--md-surface-container);
+    border-radius: var(--md-radius);
+    box-shadow: var(--md-shadow);
+    padding: 14px 18px;
+    margin-bottom: 16px;
+}
+
+.status-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.status-label {
+    font-size: 0.75rem;
+    color: var(--md-on-surface-variant);
+}
+
+.status-value {
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.status-value.up {
+    color: var(--md-up);
+}
+
+.status-value.down {
+    color: var(--md-down);
+}
+
+.status-value.warn {
+    color: var(--md-warn);
+}
+
+.history-card {
+    margin-top: 20px;
+}
+
+.history-card > summary {
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.backup-row {
+    display: grid;
+    grid-template-columns: 1fr 2fr auto;
+    align-items: center;
+    gap: 12px;
+    border-top: 1px solid var(--md-outline);
+    padding: 10px 0;
+    font-size: 0.9rem;
+}
+
+.login-body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+}
+
+.login-main {
+    width: 100%;
+    max-width: 380px;
+    padding: 0 16px;
+    margin: 0;
+}
+
+.login-card {
+    padding: 28px;
+}
+
+.login-brand {
+    justify-content: center;
+    font-size: 1.15rem;
+    margin-bottom: 20px;
+}
+
+.login-error {
+    background: #fce8e6;
+    border: 1px solid #ef9a9a;
+    color: #8c1d18;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 0.85rem;
+    margin: 0 0 16px;
+}
+
+.login-submit {
+    width: 100%;
+}
+
 .toast {
     position: fixed;
     bottom: 24px;
@@ -376,6 +670,19 @@ select {
 @media (max-width: 640px) {
     .row {
         grid-template-columns: 1fr;
+    }
+
+    .backup-row {
+        grid-template-columns: 1fr auto;
+    }
+
+    .backup-row .field-help {
+        grid-column: 1 / -1;
+    }
+
+    .app-bar {
+        gap: 12px;
+        padding: 0 12px;
     }
 
     .log-card {
