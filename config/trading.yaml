@@ -23,22 +23,37 @@ risk:
   max_grid_trades_per_day: 20
 timing:
   candle_period: 4h
-  tempo_entre_trades: 150
+  tempo_entre_trades: 300
   delay_entre_ordens: 3600
 assets:
 - stock_code: BTC
   operation_code: BTCUSDT
   traded_quantity: 0.0
-  traded_percentage: 50.0
+  traded_percentage: 40.0
   breakout_price: 78000.0
 - stock_code: ETH
   operation_code: ETHUSDT
   traded_quantity: 0.0
-  traded_percentage: 50.0
+  traded_percentage: 30.0
   breakout_price: 2450.0
+- stock_code: SOL
+  operation_code: SOLUSDT
+  traded_quantity: 0.0
+  traded_percentage: 10.0
+  breakout_price: 458.0
+- stock_code: XRP
+  operation_code: XRPUSDT
+  traded_quantity: 0.0
+  traded_percentage: 10.0
+  breakout_price: 1.5
+- stock_code: LINK
+  operation_code: LINKUSDT
+  traded_quantity: 0.0
+  traded_percentage: 10.0
+  breakout_price: 12.5
 operation:
   cancel_orders_on_shutdown: false
-  circuit_breaker_errors: 5
+  circuit_breaker_errors: 3
   circuit_breaker_pause_seconds: 300
 alerts:
   enabled: false
