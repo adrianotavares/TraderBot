@@ -5,6 +5,30 @@ from typing import Optional
 import pandas as pd
 
 
+def to_epoch_seconds(value) -> Optional[int]:
+    """Epoch seconds UTC from a candle timestamp.
+
+    `normalize_klines` localizes `open_time` to America/Sao_Paulo, so consumers
+    that need a wall-clock-independent instant must go through here. Naive
+    values are read as UTC.
+    """
+    if value is None:
+        return None
+    timestamp = pd.Timestamp(value)
+    if pd.isna(timestamp):
+        return None
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.tz_localize("UTC")
+    return int(timestamp.timestamp())
+
+
+def last_candle_epoch(stock_data: Optional[pd.DataFrame]) -> Optional[int]:
+    """Open time of the newest candle, in epoch seconds UTC."""
+    if stock_data is None or len(stock_data) == 0 or "open_time" not in stock_data:
+        return None
+    return to_epoch_seconds(stock_data["open_time"].iloc[-1])
+
+
 class MarketDataService:
     def __init__(self, client, operation_code: str, candle_period: str):
         self.client = client

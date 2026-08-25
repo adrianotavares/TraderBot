@@ -6,6 +6,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SRC_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -50,6 +51,8 @@ from security import (
     start_session,
     verify_password,
 )
+from services.chart_data import DEFAULT_BARS, WARMUP_CANDLES, build_chart_payload
+from services.market_data import MarketDataService
 from services.order_sync import DEFAULT_PROFIT_CUTOFF, sync_filled_orders_from_binance
 from services.outcome_history import (
     META_REBUILT,
@@ -59,15 +62,22 @@ from services.outcome_history import (
     rebuild_outcomes_from_orders,
 )
 from services.portfolio import fetch_portfolio
+from services.regime_detector import RegimeDetector
 
 routes = Blueprint("routes", __name__)
 
 _PORTFOLIO_CACHE_TTL = 5.0
 _HISTORY_CACHE_TTL = 30.0
+# Charts poll far slower than the log feed: a 4h candle barely moves in a minute,
+# and refetching klines for every asset competes with the bot's own rate limit.
+_CHART_CACHE_TTL = 60.0
+_CHART_CACHE_MAX_ENTRIES = 8
 _portfolio_lock = threading.Lock()
 _portfolio_cache = {"ts": 0.0, "data": None}
 _history_lock = threading.Lock()
 _history_cache = {"ts": 0.0, "data": None}
+_chart_lock = threading.Lock()
+_chart_cache: dict = {}
 _spot_client = None
 _spot_client_key = None
 
@@ -188,6 +198,124 @@ def get_profit_board(force_refresh: bool = False):
         _history_cache["ts"] = time.time()
         _history_cache["data"] = board
         return board
+
+
+def _chart_position(state, holding: Optional[dict]) -> dict:
+    """Position as the chart should show it.
+
+    `actual_trade_position` is the bot's own verdict (balance >= step_size), so
+    dust left behind by a sell does not resurrect the take profit / stop loss
+    lines. Price and P&L come from the live portfolio when it is available.
+    """
+    holding = holding or {}
+    return {
+        "open": bool(state.actual_trade_position),
+        "quantity": float(holding.get("quantity") or 0),
+        "entry_price": float(state.last_buy_price or 0),
+        "last_price": float(holding.get("price") or 0),
+        "pnl_usd": holding.get("pnl_usd"),
+        "pnl_pct": holding.get("pnl_pct"),
+    }
+
+
+def _empty_chart(asset, error: str) -> dict:
+    return {
+        "stock_code": asset.stock_code,
+        "operation_code": asset.operation_code,
+        "candles": [],
+        "regime": [],
+        "current_regime": None,
+        "trailing_stop": [],
+        "position": {},
+        "levels": None,
+        "markers": [],
+        "error": error,
+    }
+
+
+def _chart_holdings() -> dict:
+    try:
+        snapshot = get_portfolio_snapshot()
+    except Exception:
+        logging.warning("Building charts without portfolio data", exc_info=True)
+        return {}
+    return {
+        holding["operation_code"]: holding for holding in snapshot.get("assets", [])
+    }
+
+
+def get_tracking_charts(
+    operation_code: Optional[str] = None,
+    bars: int = DEFAULT_BARS,
+) -> dict:
+    key = (operation_code or "", int(bars))
+    now = time.time()
+    with _chart_lock:
+        cached = _chart_cache.get(key)
+        if cached is not None and now - cached["ts"] < _CHART_CACHE_TTL:
+            return cached["data"]
+
+    settings, env = load_settings()
+    if not env.api_key or not env.secret_key:
+        raise ValueError("Credenciais da Binance não configuradas")
+
+    assets = list(settings.assets)
+    if operation_code:
+        assets = [a for a in assets if a.operation_code == operation_code]
+        if not assets:
+            raise LookupError(f"Ativo não configurado: {operation_code}")
+
+    client = get_spot_client(
+        env.api_key,
+        env.secret_key,
+        testnet=settings.environment == "testnet",
+    )
+    store = StateStore()
+    detector = RegimeDetector(**settings.regime.model_dump())
+    orders = store.list_orders(since=DEFAULT_PROFIT_CUTOFF)
+    holdings = _chart_holdings()
+    candle_period = settings.timing.candle_period
+    limit = min(1000, int(bars) + WARMUP_CANDLES)
+
+    charts = []
+    for asset in assets:
+        try:
+            market = MarketDataService(client, asset.operation_code, candle_period)
+            state = store.load_state(asset.operation_code)
+            charts.append(
+                build_chart_payload(
+                    market.fetch_klines(limit=limit),
+                    stock_code=asset.stock_code,
+                    operation_code=asset.operation_code,
+                    candle_period=candle_period,
+                    risk=settings.risk,
+                    position=_chart_position(state, holdings.get(asset.operation_code)),
+                    take_profit_index=state.take_profit_index,
+                    detector=detector,
+                    store=store,
+                    orders=orders,
+                    strategy_main=settings.strategy.main,
+                    strategy_args=settings.strategy.main_args,
+                    bars=int(bars),
+                )
+            )
+        except Exception as exc:
+            # One failing symbol must not blank the whole page.
+            logging.exception("Chart payload failed for %s", asset.operation_code)
+            charts.append(_empty_chart(asset, str(exc)))
+
+    data = {
+        "candle_period": candle_period,
+        "strategy": settings.strategy.main,
+        "regime_enabled": settings.regime.enabled,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "assets": charts,
+    }
+    with _chart_lock:
+        if len(_chart_cache) >= _CHART_CACHE_MAX_ENTRIES:
+            _chart_cache.clear()
+        _chart_cache[key] = {"ts": time.time(), "data": data}
+    return data
 
 
 def _validate_stocks_traded_list(stocks):
@@ -403,6 +531,24 @@ def get_profit():
         return jsonify({"error": str(e)}), 503
     except Exception as e:
         return jsonify({"error": f"Erro ao carregar profit: {str(e)}"}), 500
+
+
+@routes.route("/api/tracking/charts", methods=["GET"])
+def api_tracking_charts():
+    try:
+        bars = max(20, min(int(request.args.get("bars", DEFAULT_BARS)), 500))
+    except (TypeError, ValueError):
+        return jsonify({"error": "bars must be an integer"}), 400
+    try:
+        return jsonify(
+            get_tracking_charts(request.args.get("operation_code") or None, bars)
+        )
+    except LookupError as e:
+        return jsonify({"error": str(e)}), 404
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 503
+    except Exception as e:
+        return jsonify({"error": f"Erro ao carregar gráficos: {str(e)}"}), 500
 
 
 @routes.route("/api/logs", methods=["GET"])

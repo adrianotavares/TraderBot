@@ -96,6 +96,18 @@ class StateStore:
                     loss_usdt REAL NOT NULL DEFAULT 0,
                     PRIMARY KEY (day_key, operation_code)
                 );
+                CREATE TABLE IF NOT EXISTS regime_history (
+                    operation_code TEXT NOT NULL,
+                    candle_time INTEGER NOT NULL,
+                    regime TEXT NOT NULL,
+                    score INTEGER NOT NULL DEFAULT 0,
+                    adx REAL,
+                    rsi REAL,
+                    action TEXT,
+                    source TEXT NOT NULL DEFAULT 'live',
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (operation_code, candle_time)
+                );
                 """
             )
             self._migrate(conn)
@@ -360,6 +372,121 @@ class StateStore:
             "trades": int(trades_row["n"] or 0),
             "loss_usdt": float(loss_row["loss"] or 0),
         }
+
+    def save_regime(
+        self,
+        operation_code: str,
+        candle_time: int,
+        regime: str,
+        score: int = 0,
+        adx: float | None = None,
+        rsi: float | None = None,
+        action: str | None = None,
+        source: str = "live",
+    ) -> None:
+        """Store the regime of one candle. A 'live' write always wins.
+
+        The bot evaluates the regime every cycle (minutes) while a candle spans
+        hours, so the last live evaluation inside the candle replaces the earlier
+        ones. A 'backfill' write never overwrites what the bot actually saw.
+        """
+        self.save_regime_batch(
+            operation_code,
+            [
+                {
+                    "candle_time": candle_time,
+                    "regime": regime,
+                    "score": score,
+                    "adx": adx,
+                    "rsi": rsi,
+                    "action": action,
+                }
+            ],
+            source=source,
+        )
+
+    def save_regime_batch(
+        self,
+        operation_code: str,
+        rows: list[dict],
+        source: str = "backfill",
+    ) -> None:
+        if not rows:
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        params = [
+            (
+                operation_code,
+                int(row["candle_time"]),
+                str(row["regime"]),
+                int(row.get("score") or 0),
+                row.get("adx"),
+                row.get("rsi"),
+                row.get("action"),
+                source,
+                now,
+            )
+            for row in rows
+        ]
+        with self._connect() as conn:
+            conn.executemany(
+                """
+                INSERT INTO regime_history (
+                    operation_code, candle_time, regime, score,
+                    adx, rsi, action, source, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(operation_code, candle_time) DO UPDATE SET
+                    regime = excluded.regime,
+                    score = excluded.score,
+                    adx = excluded.adx,
+                    rsi = excluded.rsi,
+                    action = excluded.action,
+                    source = excluded.source,
+                    created_at = excluded.created_at
+                WHERE excluded.source = 'live'
+                """,
+                params,
+            )
+
+    def list_regime(
+        self,
+        operation_code: str,
+        since: int | None = None,
+        until: int | None = None,
+    ) -> list[dict]:
+        query = """
+            SELECT candle_time, regime, score, adx, rsi, action, source
+            FROM regime_history
+            WHERE operation_code = ?
+        """
+        params: list = [operation_code]
+        if since is not None:
+            query += " AND candle_time >= ?"
+            params.append(int(since))
+        if until is not None:
+            query += " AND candle_time <= ?"
+            params.append(int(until))
+        query += " ORDER BY candle_time ASC"
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+    def missing_regime_candles(
+        self,
+        operation_code: str,
+        candle_times: list[int],
+    ) -> list[int]:
+        """Which of these candles have no regime row yet."""
+        if not candle_times:
+            return []
+        wanted = [int(t) for t in candle_times]
+        known = {
+            int(row["candle_time"])
+            for row in self.list_regime(
+                operation_code, since=min(wanted), until=max(wanted)
+            )
+        }
+        return [t for t in wanted if t not in known]
 
     def record_outcome(self, outcome: dict) -> bool:
         occurred_at = outcome.get("occurred_at") or datetime.now(timezone.utc).isoformat()

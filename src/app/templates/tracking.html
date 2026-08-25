@@ -25,6 +25,21 @@
     </button>
 </div>
 
+<div class="chart-grid" id="chart-grid"></div>
+<div class="regime-key" id="regime-key" hidden>
+    <span class="regime-key-label">Regime na faixa inferior:</span>
+    <span class="regime-key-item trend">Tendência</span>
+    <span class="regime-key-item lateral">Lateral</span>
+    <span class="regime-key-item gray">Indefinido</span>
+</div>
+<p class="chart-attribution" id="chart-attribution" hidden>
+    Gráficos por
+    <a href="https://www.tradingview.com/" target="_blank" rel="noopener"
+        >TradingView Lightweight Charts™</a
+    >
+</p>
+
+<h2 class="section-title">Eventos</h2>
 <div id="log-list" class="log-list"></div>
 <div id="empty-state" class="empty" hidden>
     Nenhum evento no log ainda. Os ciclos do bot aparecem aqui automaticamente.
@@ -32,10 +47,18 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='vendor/lightweight-charts.standalone.production.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tracking_chart.js') }}"></script>
 <script>
     const ASSETS = {{ config.stocks_traded_list | tojson }};
     const REFRESH_MS = 8000;
+    // A 4h candle barely moves in a minute, and each refresh costs one klines
+    // call per asset against the same rate limit the bot uses.
+    const CHART_REFRESH_MS = 60000;
+    const CHART_BARS_GRID = 120;
+    const CHART_BARS_SINGLE = 240;
     let selectedOperation = "";
+    let chartEntries = new Map();
 
     function escapeHtml(text) {
         return String(text)
@@ -65,11 +88,80 @@
             .join("");
         container.querySelectorAll(".chip").forEach((button) => {
             button.onclick = () => {
+                if (button.dataset.operation === selectedOperation) return;
                 selectedOperation = button.dataset.operation;
                 renderChips();
+                resetCharts();
                 loadLogs();
+                loadCharts();
             };
         });
+    }
+
+    function resetCharts() {
+        chartEntries.forEach((entry) => TraderBotChart.dispose(entry));
+        chartEntries.clear();
+    }
+
+    function renderCharts(assets) {
+        const grid = document.getElementById("chart-grid");
+        grid.classList.toggle("single", Boolean(selectedOperation));
+        grid.querySelectorAll(":scope > .chart-error").forEach((node) => node.remove());
+        const seen = new Set();
+        assets.forEach((asset) => {
+            seen.add(asset.operation_code);
+            const existing = chartEntries.get(asset.operation_code);
+            if (existing) {
+                TraderBotChart.update(existing, asset);
+                return;
+            }
+            chartEntries.set(
+                asset.operation_code,
+                TraderBotChart.mount(grid, asset)
+            );
+        });
+        chartEntries.forEach((entry, code) => {
+            if (seen.has(code)) return;
+            TraderBotChart.dispose(entry);
+            chartEntries.delete(code);
+        });
+        const hasCharts = assets.some((asset) => !asset.error && asset.candles.length);
+        document.getElementById("chart-attribution").hidden = !assets.length;
+        document.getElementById("regime-key").hidden = !hasCharts;
+    }
+
+    function showChartMessage(message) {
+        resetCharts();
+        const grid = document.getElementById("chart-grid");
+        grid.classList.remove("single");
+        grid.innerHTML = "";
+        const note = document.createElement("p");
+        note.className = "chart-error";
+        note.textContent = message;
+        grid.appendChild(note);
+        document.getElementById("chart-attribution").hidden = true;
+        document.getElementById("regime-key").hidden = true;
+    }
+
+    async function loadCharts() {
+        if (!TraderBotChart.available) {
+            showChartMessage("Biblioteca de gráficos não carregada.");
+            return;
+        }
+        const params = new URLSearchParams({
+            bars: String(selectedOperation ? CHART_BARS_SINGLE : CHART_BARS_GRID),
+        });
+        if (selectedOperation) params.set("operation_code", selectedOperation);
+        try {
+            const response = await traderbotFetch(
+                `/api/tracking/charts?${params.toString()}`
+            );
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "bad status");
+            renderCharts(data.assets || []);
+        } catch (err) {
+            showChartMessage(`Não foi possível carregar os gráficos: ${err.message}`);
+        }
     }
 
     function toneFor(entry) {
@@ -228,12 +320,18 @@
         await Promise.all([loadLogs(), loadPortfolio()]);
     }
 
-    document.getElementById("refresh-btn").onclick = refreshAll;
+    document.getElementById("refresh-btn").onclick = () =>
+        Promise.all([refreshAll(), loadCharts()]);
     renderChips();
     refreshAll();
+    loadCharts();
     setInterval(() => {
         if (document.hidden) return;
         refreshAll();
     }, REFRESH_MS);
+    setInterval(() => {
+        if (document.hidden) return;
+        loadCharts();
+    }, CHART_REFRESH_MS);
 </script>
 {% endblock %}

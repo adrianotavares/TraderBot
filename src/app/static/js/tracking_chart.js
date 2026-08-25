@@ -1,0 +1,442 @@
+/**
+ * Tracking charts built on TradingView Lightweight Charts (Apache 2.0).
+ *
+ * Each card shows one asset: candles, the regime ribbon, the position entry and
+ * the take profit / stop loss levels. The library has no native "position on
+ * chart" widget, so levels are price lines and fills are series markers.
+ */
+(function () {
+    "use strict";
+
+    var LWC = window.LightweightCharts;
+    var TZ = "America/Sao_Paulo";
+
+    // Mirrors the --md-* custom properties in app.css.
+    var COLORS = {
+        up: "#1b7f3a",
+        down: "#b3261e",
+        info: "#1565c0",
+        entry: "#5c5c57",
+        grid: "#eceff1",
+        text: "#5c5c57",
+    };
+
+    var REGIME_COLORS = {
+        TREND: "rgba(27, 127, 58, 0.85)",
+        LATERAL: "rgba(230, 81, 0, 0.85)",
+        GRAY: "rgba(158, 158, 153, 0.70)",
+    };
+    var REGIME_NAMES = ["TREND", "LATERAL", "GRAY"];
+    var TRANSPARENT = "rgba(0, 0, 0, 0)";
+
+    var REGIME_LABELS = {
+        TREND: "Tendência",
+        LATERAL: "Lateral",
+        GRAY: "Indefinido",
+    };
+
+    var dateFormat = new Intl.DateTimeFormat("pt-BR", {
+        timeZone: TZ,
+        day: "2-digit",
+        month: "2-digit",
+    });
+    var timeFormat = new Intl.DateTimeFormat("pt-BR", {
+        timeZone: TZ,
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+    var fullFormat = new Intl.DateTimeFormat("pt-BR", {
+        timeZone: TZ,
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+
+    /**
+     * The API sends true UTC epoch seconds; the axis is rendered in the
+     * bot's timezone instead of shifting the timestamps.
+     */
+    function toDate(seconds) {
+        return new Date(seconds * 1000);
+    }
+
+    function tickMark(seconds, tickMarkType) {
+        var date = toDate(seconds);
+        // 3 = Time, 4 = TimeWithSeconds. Anything coarser is a date tick.
+        return tickMarkType >= 3 ? timeFormat.format(date) : dateFormat.format(date);
+    }
+
+    function precisionFor(price) {
+        var value = Math.abs(Number(price) || 0);
+        if (value >= 10) return 2;
+        if (value >= 1) return 4;
+        if (value >= 0.01) return 5;
+        return 8;
+    }
+
+    function formatPrice(price, precision) {
+        if (price == null || !isFinite(price)) return "—";
+        return Number(price).toLocaleString("pt-BR", {
+            minimumFractionDigits: precision,
+            maximumFractionDigits: precision,
+        });
+    }
+
+    function formatPct(value) {
+        if (value == null || !isFinite(value)) return "—";
+        var sign = value > 0 ? "+" : "";
+        return sign + Number(value).toFixed(2) + "%";
+    }
+
+    function element(tag, className, text) {
+        var node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text != null) node.textContent = text;
+        return node;
+    }
+
+    function buildCard(asset) {
+        var card = element("article", "chart-card");
+
+        var header = element("header", "chart-header");
+        var title = element("div", "chart-title");
+        title.appendChild(element("span", "chart-ticker", asset.stock_code));
+        var price = element("span", "chart-price", "—");
+        title.appendChild(price);
+        header.appendChild(title);
+
+        var badges = element("div", "chart-badges");
+        var regime = element("span", "regime-badge", "—");
+        var pnl = element("span", "chart-pnl", "");
+        badges.appendChild(regime);
+        badges.appendChild(pnl);
+        header.appendChild(badges);
+        card.appendChild(header);
+
+        var canvas = element("div", "chart-canvas");
+        card.appendChild(canvas);
+
+        var legend = element("footer", "chart-legend");
+        card.appendChild(legend);
+
+        var error = element("p", "chart-error");
+        error.hidden = true;
+        card.appendChild(error);
+
+        return {
+            root: card,
+            canvas: canvas,
+            price: price,
+            regime: regime,
+            pnl: pnl,
+            legend: legend,
+            error: error,
+        };
+    }
+
+    function buildChart(canvas) {
+        var chart = LWC.createChart(canvas, {
+            autoSize: true,
+            layout: {
+                background: { color: "transparent" },
+                textColor: COLORS.text,
+                fontFamily: "Roboto, system-ui, sans-serif",
+                fontSize: 11,
+                attributionLogo: false,
+            },
+            grid: {
+                vertLines: { color: COLORS.grid },
+                horzLines: { color: COLORS.grid },
+            },
+            rightPriceScale: { borderVisible: false },
+            timeScale: {
+                borderVisible: false,
+                timeVisible: true,
+                secondsVisible: false,
+                tickMarkFormatter: tickMark,
+            },
+            crosshair: { mode: LWC.CrosshairMode.Normal },
+            localization: {
+                locale: "pt-BR",
+                timeFormatter: function (seconds) {
+                    return fullFormat.format(toDate(seconds));
+                },
+            },
+            handleScale: { axisPressedMouseMove: false },
+        });
+
+        // One area series per regime, on an overlay price scale that is
+        // invisible by default. A histogram would leave a gap between bars and
+        // read as a barcode; area fills broken by whitespace points give one
+        // contiguous block per regime run. Created before the candles so the
+        // candles draw on top.
+        var bands = {};
+        REGIME_NAMES.forEach(function (name) {
+            bands[name] = chart.addSeries(LWC.AreaSeries, {
+                priceScaleId: "regime",
+                lineWidth: 1,
+                lineColor: TRANSPARENT,
+                topColor: REGIME_COLORS[name],
+                bottomColor: REGIME_COLORS[name],
+                lastValueVisible: false,
+                priceLineVisible: false,
+                crosshairMarkerVisible: false,
+            });
+        });
+        chart.priceScale("regime").applyOptions({
+            scaleMargins: { top: 0.9, bottom: 0 },
+        });
+
+        var candles = chart.addSeries(LWC.CandlestickSeries, {
+            upColor: COLORS.up,
+            downColor: COLORS.down,
+            borderUpColor: COLORS.up,
+            borderDownColor: COLORS.down,
+            wickUpColor: COLORS.up,
+            wickDownColor: COLORS.down,
+            // The header already shows the last price. On the chart it would
+            // add a fourth horizontal line in the same green as the take
+            // profit, and an axis label over the price ticks.
+            lastValueVisible: false,
+            priceLineVisible: false,
+        });
+        // Keep the candles clear of the regime band at the bottom.
+        chart.priceScale("right").applyOptions({
+            scaleMargins: { top: 0.08, bottom: 0.16 },
+        });
+
+        var trailing = chart.addSeries(LWC.LineSeries, {
+            color: COLORS.info,
+            lineWidth: 1,
+            lineStyle: LWC.LineStyle.Dotted,
+            lastValueVisible: false,
+            priceLineVisible: false,
+            crosshairMarkerVisible: false,
+        });
+
+        return {
+            chart: chart,
+            candles: candles,
+            bands: bands,
+            trailing: trailing,
+            markers: LWC.createSeriesMarkers(candles, []),
+            priceLines: [],
+            fitted: false,
+        };
+    }
+
+    function clearPriceLines(handle) {
+        handle.priceLines.forEach(function (line) {
+            handle.candles.removePriceLine(line);
+        });
+        handle.priceLines = [];
+    }
+
+    function addPriceLine(handle, price, color, title, style) {
+        handle.priceLines.push(
+            handle.candles.createPriceLine({
+                price: price,
+                color: color,
+                lineWidth: 1,
+                lineStyle: style,
+                // The on-chart title plus the legend below carry the numbers;
+                // axis labels would cover the price scale's own ticks.
+                axisLabelVisible: false,
+                title: title,
+            })
+        );
+    }
+
+    /** Whitespace between runs breaks the fill, so each run is its own block. */
+    function bandData(points, name) {
+        return points.map(function (point) {
+            return point.regime === name
+                ? { time: point.time, value: 1 }
+                : { time: point.time };
+        });
+    }
+
+    function renderLegend(handle, card, asset, precision) {
+        clearPriceLines(handle);
+        card.legend.textContent = "";
+
+        var items = [];
+        var levels = asset.levels;
+        if (!levels) {
+            items.push({ cls: "flat", text: "Sem posição aberta" });
+        } else {
+            appendLevelItems(handle, items, levels, precision);
+        }
+        if ((asset.trailing_stop || []).length) {
+            items.push({ cls: "trail", text: "Trailing stop (ATR)" });
+        }
+
+        items.forEach(function (item) {
+            card.legend.appendChild(
+                element("span", "legend-item " + item.cls, item.text)
+            );
+        });
+    }
+
+    function appendLevelItems(handle, items, levels, precision) {
+        if (levels.take_profit) {
+            addPriceLine(
+                handle,
+                levels.take_profit.price,
+                COLORS.up,
+                "TP " + formatPct(levels.take_profit.pct),
+                LWC.LineStyle.Dashed
+            );
+            items.push({
+                cls: "tp",
+                text:
+                    "TP " +
+                    formatPct(levels.take_profit.pct) +
+                    " · " +
+                    formatPrice(levels.take_profit.price, precision),
+            });
+        }
+        addPriceLine(
+            handle,
+            levels.entry,
+            COLORS.entry,
+            "Entrada",
+            LWC.LineStyle.Solid
+        );
+        items.push({
+            cls: "entry",
+            text: "Entrada " + formatPrice(levels.entry, precision),
+        });
+        if (levels.stop_loss) {
+            addPriceLine(
+                handle,
+                levels.stop_loss.price,
+                COLORS.down,
+                "SL -" + levels.stop_loss.pct.toFixed(2) + "%",
+                LWC.LineStyle.Dashed
+            );
+            items.push({
+                cls: "sl",
+                text:
+                    "SL -" +
+                    levels.stop_loss.pct.toFixed(2) +
+                    "% · " +
+                    formatPrice(levels.stop_loss.price, precision),
+            });
+        }
+    }
+
+    function renderHeader(card, asset, precision) {
+        var position = asset.position || {};
+        var last = asset.candles.length
+            ? asset.candles[asset.candles.length - 1].close
+            : null;
+        card.price.textContent = formatPrice(last, precision);
+
+        var current = asset.current_regime;
+        var name = current ? current.regime : null;
+        card.regime.className =
+            "regime-badge " + (name ? name.toLowerCase() : "unknown");
+        card.regime.textContent = name ? REGIME_LABELS[name] || name : "—";
+        card.regime.title = current
+            ? "Score " +
+              current.score +
+              " · ADX " +
+              current.adx +
+              " · RSI " +
+              current.rsi +
+              (current.provisional ? " (candle em formação)" : "")
+            : "";
+
+        var pnl = position.open ? position.pnl_pct : null;
+        card.pnl.className =
+            "chart-pnl " + (pnl == null ? "" : pnl > 0 ? "up" : pnl < 0 ? "down" : "");
+        card.pnl.textContent = pnl == null ? "" : formatPct(pnl);
+    }
+
+    function markerFor(marker) {
+        var buy = marker.side === "BUY";
+        return {
+            time: marker.time,
+            position: buy ? "belowBar" : "aboveBar",
+            color: buy ? COLORS.up : COLORS.down,
+            shape: buy ? "arrowUp" : "arrowDown",
+            text: buy ? "C" : "V",
+        };
+    }
+
+    function update(handle, card, asset) {
+        if (asset.error) {
+            card.error.hidden = false;
+            card.error.textContent = "Não foi possível carregar: " + asset.error;
+            return;
+        }
+        card.error.hidden = true;
+
+        if (!asset.candles || !asset.candles.length) {
+            card.error.hidden = false;
+            card.error.textContent = "Sem candles para exibir.";
+            return;
+        }
+
+        var last = asset.candles[asset.candles.length - 1].close;
+        var precision = precisionFor(last);
+        handle.candles.applyOptions({
+            priceFormat: {
+                type: "price",
+                precision: precision,
+                minMove: Math.pow(10, -precision),
+            },
+        });
+
+        // Keep the user's zoom across the 60s refresh.
+        var range = handle.fitted
+            ? handle.chart.timeScale().getVisibleLogicalRange()
+            : null;
+
+        handle.candles.setData(asset.candles);
+        var regime = asset.regime || [];
+        REGIME_NAMES.forEach(function (name) {
+            handle.bands[name].setData(bandData(regime, name));
+        });
+        handle.trailing.setData(asset.trailing_stop || []);
+        handle.markers.setMarkers((asset.markers || []).map(markerFor));
+
+        renderHeader(card, asset, precision);
+        renderLegend(handle, card, asset, precision);
+
+        if (range) {
+            handle.chart.timeScale().setVisibleLogicalRange(range);
+        } else {
+            handle.chart.timeScale().fitContent();
+            handle.fitted = true;
+        }
+    }
+
+    window.TraderBotChart = {
+        available: Boolean(LWC),
+
+        /** Build a card for `asset` and append it to `parent`. */
+        mount: function (parent, asset) {
+            var card = buildCard(asset);
+            parent.appendChild(card.root);
+            var handle = buildChart(card.canvas);
+            var entry = { card: card, handle: handle };
+            update(handle, card, asset);
+            return entry;
+        },
+
+        update: function (entry, asset) {
+            update(entry.handle, entry.card, asset);
+        },
+
+        dispose: function (entry) {
+            entry.handle.chart.remove();
+            if (entry.card.root.parentNode) {
+                entry.card.root.parentNode.removeChild(entry.card.root);
+            }
+        },
+    };
+})();

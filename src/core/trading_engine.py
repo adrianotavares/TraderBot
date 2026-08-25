@@ -15,7 +15,7 @@ from services.asset_variation import (
     format_variation_message,
     unrealized_pnl_pct,
 )
-from services.market_data import MarketDataService
+from services.market_data import MarketDataService, last_candle_epoch
 from services.order_executor import OrderExecutor
 from services.outcome_history import fill_from_order, realized_pnl
 from services.regime_router import can_run_grid, resolve_regime_action
@@ -282,10 +282,36 @@ class TradingEngine:
             payload["volume_ratio"] = round(breakout.volume_ratio, 2)
 
         log_event(logging.INFO, "Regime detected", **payload)
+        self._save_regime_history(regime, action)
         print(
             f"\nRegime: {regime.regime} (score={regime.score}, "
             f"ADX={regime.adx_value:.1f}, RSI={regime.rsi_value:.1f}) -> {action}"
         )
+
+    def _save_regime_history(self, regime, action: str):
+        """Record the regime of the current candle so the chart shows history.
+
+        Later cycles inside the same candle replace this row. Persisting is a
+        dashboard concern, so a failure here must never abort a trading cycle.
+        """
+        candle_time = last_candle_epoch(self.bot.stock_data)
+        if candle_time is None:
+            return
+        try:
+            self.state_store.save_regime(
+                self.bot.operation_code,
+                candle_time,
+                regime.regime,
+                score=regime.score,
+                adx=round(regime.adx_value, 2),
+                rsi=round(regime.rsi_value, 2),
+                action=action,
+                source="live",
+            )
+        except Exception:
+            logging.exception(
+                "Failed to persist regime history for %s", self.bot.operation_code
+            )
 
     def _shutdown_grid(self):
         if not self.grid_manager:
