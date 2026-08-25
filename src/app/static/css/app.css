@@ -183,16 +183,63 @@ h1 {
     border: 1px solid var(--md-outline);
     background: var(--md-surface-container);
     color: var(--md-on-surface);
-    border-radius: 20px;
-    padding: 6px 14px;
+    border-radius: 12px;
+    padding: 5px 12px 6px;
     font-size: 0.85rem;
     cursor: pointer;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 1px;
+    min-height: 44px;
+    min-width: 88px;
+    line-height: 1.15;
+    text-align: left;
+}
+
+.chip-label {
+    font-weight: 500;
+}
+
+.chip-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 6px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--md-on-surface-variant);
+}
+
+.chip-meta.muted {
+    font-weight: 400;
+}
+
+.chip-pnl.up {
+    color: var(--md-up);
+}
+
+.chip-pnl.down {
+    color: var(--md-down);
 }
 
 .chip.active {
     background: var(--md-primary);
     color: var(--md-on-primary);
     border-color: var(--md-primary);
+}
+
+.chip.active .chip-meta {
+    color: rgba(255, 255, 255, 0.88);
+}
+
+.chip.active .chip-pnl.up {
+    color: #c8e6c9;
+}
+
+.chip.active .chip-pnl.down {
+    color: #ffcdd2;
 }
 
 .icon-btn {
@@ -910,5 +957,166 @@ textarea {
 
     .variation {
         grid-column: 2;
+    }
+}
+
+/* Tracking fills the viewport: chart and events sit side by side, and only
+   the event list scrolls. Profit and Config keep the original document flow. */
+html:has(body.page-tracking) {
+    height: 100%;
+    overflow: hidden;
+}
+
+body.page-tracking {
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+body.page-tracking main {
+    flex: 1;
+    min-height: 0;
+    max-width: none;
+    width: 100%;
+    margin: 0;
+    padding: 12px 20px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.tracking-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 8px 24px;
+    flex-shrink: 0;
+}
+
+.tracking-heading {
+    min-width: 0;
+}
+
+body.page-tracking h1 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+body.page-tracking .subtitle {
+    margin: 2px 0 0;
+    font-size: 0.85rem;
+}
+
+body.page-tracking .portfolio-summary {
+    margin: 0;
+    gap: 24px;
+}
+
+body.page-tracking .portfolio-value {
+    font-size: 1.35rem;
+}
+
+body.page-tracking .toolbar {
+    margin-bottom: 0;
+    flex-shrink: 0;
+}
+
+.tracking-body {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+    gap: 16px;
+}
+
+.tracking-chart-pane,
+.tracking-events-pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.tracking-chart-pane .chart-grid {
+    flex: 1;
+    min-height: 0;
+    margin-bottom: 0;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr);
+}
+
+.tracking-chart-pane .chart-card {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.tracking-chart-pane .chart-canvas,
+.tracking-chart-pane .chart-grid.single .chart-canvas {
+    flex: 1;
+    min-height: 160px;
+    height: auto;
+}
+
+.tracking-chart-pane .chart-legend,
+.tracking-chart-pane .regime-key,
+.tracking-chart-pane .chart-attribution {
+    flex-shrink: 0;
+}
+
+.tracking-chart-pane .chart-attribution {
+    margin: 4px 0 0;
+}
+
+.tracking-events-pane .section-title {
+    margin: 0 0 8px;
+    flex-shrink: 0;
+}
+
+.tracking-events-pane .log-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    gap: 8px;
+    padding-right: 2px;
+}
+
+.tracking-events-pane .log-list:empty {
+    display: none;
+}
+
+.tracking-events-pane .log-card {
+    padding: 10px 12px;
+    gap: 10px;
+}
+
+.tracking-events-pane .log-message {
+    font-size: 0.88rem;
+}
+
+.tracking-events-pane .log-meta {
+    margin: 4px 0 0;
+}
+
+.tracking-events-pane .empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.tracking-events-pane .empty[hidden] {
+    display: none;
+}
+
+@media (max-width: 960px) {
+    .tracking-body {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(220px, 1.2fr) minmax(160px, 0.8fr);
     }
 }

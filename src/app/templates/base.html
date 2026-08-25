@@ -19,7 +19,7 @@
             href="{{ url_for('static', filename='css/app.css') }}"
         />
     </head>
-    <body>
+    <body class="{% block body_class %}{% endblock %}">
         <header class="app-bar">
             <div class="brand">
                 <span class="material-symbols-outlined">candlestick_chart</span>

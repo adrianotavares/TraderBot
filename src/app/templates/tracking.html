@@ -1,19 +1,23 @@
 {% extends "base.html" %}
 {% block title %}Tracking{% endblock %}
+{% block body_class %}page-tracking{% endblock %}
 {% block content %}
-<h1>Tracking</h1>
-<p class="subtitle">
-    Evolução dos ativos no candle de {{ config.CANDLE_PERIOD }}
-</p>
-
-<div class="portfolio-summary" id="portfolio-summary">
-    <div class="portfolio-metric">
-        <span class="portfolio-label">Saldo total</span>
-        <span class="portfolio-value" id="portfolio-total">—</span>
+<div class="tracking-top">
+    <div class="tracking-heading">
+        <h1>Tracking</h1>
+        <p class="subtitle">
+            Evolução dos ativos no candle de {{ config.CANDLE_PERIOD }}
+        </p>
     </div>
-    <div class="portfolio-metric">
-        <span class="portfolio-label">P&amp;L total</span>
-        <span class="portfolio-value" id="portfolio-pnl">—</span>
+    <div class="portfolio-summary" id="portfolio-summary">
+        <div class="portfolio-metric">
+            <span class="portfolio-label">Saldo total</span>
+            <span class="portfolio-value" id="portfolio-total">—</span>
+        </div>
+        <div class="portfolio-metric">
+            <span class="portfolio-label">P&amp;L total</span>
+            <span class="portfolio-value" id="portfolio-pnl">—</span>
+        </div>
     </div>
 </div>
 
@@ -25,24 +29,29 @@
     </button>
 </div>
 
-<div class="chart-grid" id="chart-grid"></div>
-<div class="regime-key" id="regime-key" hidden>
-    <span class="regime-key-label">Regime na faixa inferior:</span>
-    <span class="regime-key-item trend">Tendência</span>
-    <span class="regime-key-item lateral">Lateral</span>
-    <span class="regime-key-item gray">Indefinido</span>
-</div>
-<p class="chart-attribution" id="chart-attribution" hidden>
-    Gráficos por
-    <a href="https://www.tradingview.com/" target="_blank" rel="noopener"
-        >TradingView Lightweight Charts™</a
-    >
-</p>
-
-<h2 class="section-title">Eventos</h2>
-<div id="log-list" class="log-list"></div>
-<div id="empty-state" class="empty" hidden>
-    Nenhum evento no log ainda. Os ciclos do bot aparecem aqui automaticamente.
+<div class="tracking-body">
+    <section class="tracking-chart-pane" aria-label="Gráfico">
+        <div class="chart-grid" id="chart-grid"></div>
+        <div class="regime-key" id="regime-key" hidden>
+            <span class="regime-key-label">Regime na faixa inferior:</span>
+            <span class="regime-key-item trend">Tendência</span>
+            <span class="regime-key-item lateral">Lateral</span>
+            <span class="regime-key-item gray">Indefinido</span>
+        </div>
+        <p class="chart-attribution" id="chart-attribution" hidden>
+            Gráficos por
+            <a href="https://www.tradingview.com/" target="_blank" rel="noopener"
+                >TradingView Lightweight Charts™</a
+            >
+        </p>
+    </section>
+    <section class="tracking-events-pane" aria-label="Eventos">
+        <h2 class="section-title">Eventos</h2>
+        <div id="log-list" class="log-list"></div>
+        <div id="empty-state" class="empty" hidden>
+            Nenhum evento no log ainda. Os ciclos do bot aparecem aqui automaticamente.
+        </div>
+    </section>
 </div>
 {% endblock %}
 
@@ -59,6 +68,7 @@
     const CHART_BARS_SINGLE = 240;
     let selectedOperation = "";
     let chartEntries = new Map();
+    let holdingsByOperation = {};
 
     function escapeHtml(text) {
         return String(text)
@@ -67,6 +77,56 @@
             .replaceAll(">", "&gt;")
             .replaceAll('"', "&quot;")
             .replaceAll("'", "&#39;");
+    }
+
+    function formatQty(value, stockCode) {
+        const formatted = Number(value).toLocaleString("pt-BR", {
+            maximumFractionDigits: 8,
+        });
+        return stockCode ? `${formatted} ${stockCode}` : formatted;
+    }
+
+    function chipMeta(operationCode, stockCode) {
+        if (!operationCode) return { html: "", title: "", aria: stockCode };
+        const row = holdingsByOperation[operationCode];
+        if (!row) {
+            return {
+                html: `<span class="chip-meta muted">—</span>`,
+                title: "",
+                aria: stockCode,
+            };
+        }
+        const quantity = Number(row.quantity) || 0;
+        const usdValue = Number(row.usd_value) || 0;
+        if (quantity <= 0 || usdValue <= 0) {
+            return {
+                html: `<span class="chip-meta muted">Sem posição</span>`,
+                title: "",
+                aria: `${stockCode}, sem posição`,
+            };
+        }
+        const pnlPct = row.pnl_pct;
+        const pnlClass =
+            pnlPct > 0 ? "up" : pnlPct < 0 ? "down" : "";
+        const pnlText =
+            pnlPct == null
+                ? ""
+                : `${pnlPct > 0 ? "+" : ""}${Number(pnlPct).toFixed(2)}%`;
+        const valueText = formatUsd(usdValue, false);
+        const qtyText = formatQty(quantity, stockCode);
+        return {
+            html: `<span class="chip-meta"><span class="chip-value">${escapeHtml(
+                valueText
+            )}</span>${
+                pnlText
+                    ? `<span class="chip-pnl ${pnlClass}">${escapeHtml(pnlText)}</span>`
+                    : ""
+            }</span>`,
+            title: `Posição: ${qtyText}`,
+            aria: pnlText
+                ? `${stockCode}, ${valueText}, ${pnlText}`
+                : `${stockCode}, ${valueText}`,
+        };
     }
 
     function renderChips() {
@@ -78,23 +138,62 @@
             }))
         );
         container.innerHTML = chips
-            .map(
-                (chip) => `
+            .map((chip) => {
+                const meta = chipMeta(chip.operationCode, chip.label);
+                const titleAttr = meta.title
+                    ? ` title="${escapeHtml(meta.title)}"`
+                    : "";
+                return `
             <button type="button" class="chip ${
                 chip.operationCode === selectedOperation ? "active" : ""
-            }" data-operation="${escapeHtml(chip.operationCode)}">${escapeHtml(chip.label)}</button>
-        `
-            )
+            }" data-operation="${escapeHtml(chip.operationCode)}" aria-label="${escapeHtml(
+                    meta.aria
+                )}"${titleAttr}><span class="chip-label">${escapeHtml(
+                    chip.label
+                )}</span>${meta.html}</button>
+        `;
+            })
             .join("");
         container.querySelectorAll(".chip").forEach((button) => {
             button.onclick = () => {
                 if (button.dataset.operation === selectedOperation) return;
                 selectedOperation = button.dataset.operation;
-                renderChips();
+                container.querySelectorAll(".chip").forEach((node) => {
+                    node.classList.toggle(
+                        "active",
+                        node.dataset.operation === selectedOperation
+                    );
+                });
                 resetCharts();
                 loadLogs();
                 loadCharts();
             };
+        });
+    }
+
+    function refreshChipMeta() {
+        const container = document.getElementById("asset-chips");
+        if (!container.querySelector(".chip")) {
+            renderChips();
+            return;
+        }
+        container.querySelectorAll(".chip").forEach((button) => {
+            const label = button.querySelector(".chip-label");
+            const stockCode = label ? label.textContent : "";
+            const meta = chipMeta(button.dataset.operation, stockCode);
+            button.setAttribute("aria-label", meta.aria);
+            if (meta.title) button.title = meta.title;
+            else button.removeAttribute("title");
+            const existing = button.querySelector(".chip-meta");
+            if (!meta.html) {
+                if (existing) existing.remove();
+                return;
+            }
+            const holder = document.createElement("div");
+            holder.innerHTML = meta.html.trim();
+            const next = holder.firstElementChild;
+            if (existing) existing.replaceWith(next);
+            else button.appendChild(next);
         });
     }
 
@@ -318,6 +417,13 @@
             }
             totalEl.textContent = formatUsd(data.total_usd, false);
             renderPnl(data.total_pnl_usd, data.total_pnl_pct);
+            holdingsByOperation = {};
+            (data.assets || []).forEach((row) => {
+                if (row.operation_code) {
+                    holdingsByOperation[row.operation_code] = row;
+                }
+            });
+            refreshChipMeta();
         } catch (err) {
             totalEl.textContent = "Indisponível";
             pnlEl.classList.remove("up", "down");
