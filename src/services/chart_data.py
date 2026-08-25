@@ -29,6 +29,9 @@ MAX_BACKFILL_PER_REQUEST = 25
 
 REGIME_COLORS = {"TREND": "up", "LATERAL": "warn", "GRAY": "neutral"}
 
+AGGREGATE_OPERATION_CODE = "__PORTFOLIO__"
+STABLE_QUOTES = frozenset({"USDT", "BUSD", "USDC", "FDUSD", "TUSD", "USD"})
+
 
 def candle_period_seconds(period: str) -> int:
     text = str(period).strip().lower()
@@ -300,6 +303,157 @@ def compute_levels(
         else None
     )
     return levels
+
+
+def _close_prices_by_time(stock_data: pd.DataFrame) -> dict[int, float]:
+    if stock_data is None or len(stock_data) == 0:
+        return {}
+    closes = pd.to_numeric(stock_data["close_price"], errors="coerce")
+    return {
+        time: float(close)
+        for time, close in zip(candle_times(stock_data), closes)
+        if not pd.isna(close)
+    }
+
+
+def aggregate_position(
+    holdings: dict[str, dict],
+    states: dict[str, Any],
+    *,
+    total_pnl_usd: Optional[float] = None,
+    total_pnl_pct: Optional[float] = None,
+) -> dict:
+    """Portfolio cost basis and P&L for the aggregate equity chart."""
+    cost_basis = 0.0
+    any_open = False
+    for operation_code, state in states.items():
+        holding = holdings.get(operation_code) or {}
+        qty = float(holding.get("quantity") or 0)
+        last_buy = float(holding.get("last_buy_price") or 0)
+        if bool(getattr(state, "actual_trade_position", False)) and qty > 0 and last_buy > 0:
+            any_open = True
+            cost_basis += qty * last_buy
+    return {
+        "open": any_open and cost_basis > 0,
+        "entry_price": round(cost_basis, 2),
+        "quantity": None,
+        "last_price": None,
+        "pnl_usd": total_pnl_usd,
+        "pnl_pct": total_pnl_pct,
+    }
+
+
+def equity_series(
+    klines_by_symbol: dict[str, pd.DataFrame],
+    holdings: dict[str, dict],
+    configured_codes: list[str],
+    *,
+    bars: int = DEFAULT_BARS,
+) -> list[dict]:
+    """USD portfolio value per candle using **current** quantities (fixed qty).
+
+    Historical values assume today's holdings were held over the whole window.
+    """
+    price_maps: dict[str, dict[int, float]] = {}
+    for operation_code, frame in klines_by_symbol.items():
+        if frame is not None and len(frame):
+            price_maps[operation_code] = _close_prices_by_time(frame)
+
+    # (operation_code, quantity, is_stable_quote)
+    contributions: list[tuple[str, float, bool]] = []
+    seen: set[str] = set()
+
+    for operation_code in configured_codes:
+        holding = holdings.get(operation_code) or {}
+        qty = float(holding.get("quantity") or 0)
+        if qty > 0:
+            contributions.append((operation_code, qty, False))
+            seen.add(operation_code)
+
+    for operation_code, holding in holdings.items():
+        stock_code = str(holding.get("stock_code") or "")
+        if stock_code not in STABLE_QUOTES or operation_code in seen:
+            continue
+        qty = float(holding.get("quantity") or 0)
+        if qty > 0:
+            contributions.append((operation_code, qty, True))
+            seen.add(operation_code)
+
+    if not contributions:
+        return []
+
+    times: set[int] = set()
+    for operation_code, _qty, is_stable in contributions:
+        if is_stable:
+            continue
+        prices = price_maps.get(operation_code)
+        if prices:
+            times.update(prices.keys())
+
+    if not times:
+        return []
+
+    window = sorted(times)[-bars:]
+    series = []
+    for time in window:
+        total = 0.0
+        for operation_code, qty, is_stable in contributions:
+            if is_stable:
+                total += qty
+                continue
+            prices = price_maps.get(operation_code)
+            if prices and time in prices:
+                total += qty * prices[time]
+        if total > 0:
+            series.append({"time": time, "value": round(total, 2)})
+    return series
+
+
+def build_aggregate_chart_payload(
+    klines_by_symbol: dict[str, pd.DataFrame],
+    *,
+    holdings: dict[str, dict],
+    states: dict[str, Any],
+    configured_codes: list[str],
+    risk,
+    bars: int = DEFAULT_BARS,
+    total_pnl_usd: Optional[float] = None,
+    total_pnl_pct: Optional[float] = None,
+) -> dict:
+    equity = equity_series(
+        klines_by_symbol,
+        holdings,
+        configured_codes,
+        bars=bars,
+    )
+    position = aggregate_position(
+        holdings,
+        states,
+        total_pnl_usd=total_pnl_usd,
+        total_pnl_pct=total_pnl_pct,
+    )
+    levels = compute_levels(
+        entry_price=position.get("entry_price") or 0,
+        position_open=bool(position.get("open")),
+        stop_loss_pct=getattr(risk, "stop_loss_pct", 0),
+        acceptable_loss_pct=getattr(risk, "acceptable_loss_pct", 0),
+        take_profit=getattr(risk, "take_profit", []) or [],
+        take_profit_index=0,
+    )
+    return {
+        "stock_code": "Portfólio",
+        "operation_code": AGGREGATE_OPERATION_CODE,
+        "series": "equity",
+        "candles": [],
+        "equity": equity,
+        "regime": [],
+        "current_regime": None,
+        "trailing_stop": [],
+        "position": position,
+        "levels": levels,
+        "markers": [],
+        "error": None,
+    }
 
 
 def order_markers(orders, operation_code: str, window: list[int]) -> list[dict]:

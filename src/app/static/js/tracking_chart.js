@@ -98,7 +98,8 @@
     }
 
     function buildCard(asset) {
-        var card = element("article", "chart-card");
+        var isEquity = asset.series === "equity";
+        var card = element("article", "chart-card" + (isEquity ? " equity" : ""));
 
         var header = element("header", "chart-header");
         var title = element("div", "chart-title");
@@ -110,6 +111,9 @@
         var badges = element("div", "chart-badges");
         var regime = element("span", "regime-badge", "—");
         var pnl = element("span", "chart-pnl", "");
+        if (isEquity) {
+            regime.hidden = true;
+        }
         badges.appendChild(regime);
         badges.appendChild(pnl);
         header.appendChild(badges);
@@ -218,6 +222,7 @@
 
         return {
             chart: chart,
+            mode: "asset",
             candles: candles,
             bands: bands,
             trailing: trailing,
@@ -227,22 +232,78 @@
         };
     }
 
+    function buildEquityChart(canvas) {
+        var chart = LWC.createChart(canvas, {
+            autoSize: true,
+            layout: {
+                background: { color: "transparent" },
+                textColor: COLORS.text,
+                fontFamily: "Roboto, system-ui, sans-serif",
+                fontSize: 11,
+                attributionLogo: false,
+            },
+            grid: {
+                vertLines: { color: COLORS.grid },
+                horzLines: { color: COLORS.grid },
+            },
+            rightPriceScale: { borderVisible: false },
+            timeScale: {
+                borderVisible: false,
+                timeVisible: true,
+                secondsVisible: false,
+                tickMarkFormatter: tickMark,
+            },
+            crosshair: { mode: LWC.CrosshairMode.Normal },
+            localization: {
+                locale: "pt-BR",
+                timeFormatter: function (seconds) {
+                    return fullFormat.format(toDate(seconds));
+                },
+            },
+            handleScale: { axisPressedMouseMove: false },
+        });
+
+        var equity = chart.addSeries(LWC.AreaSeries, {
+            lineColor: COLORS.info,
+            topColor: "rgba(21, 101, 192, 0.35)",
+            bottomColor: "rgba(21, 101, 192, 0.05)",
+            lineWidth: 2,
+            lastValueVisible: false,
+            priceLineVisible: false,
+            crosshairMarkerVisible: true,
+        });
+        chart.priceScale("right").applyOptions({
+            scaleMargins: { top: 0.08, bottom: 0.08 },
+        });
+
+        return {
+            chart: chart,
+            mode: "equity",
+            equity: equity,
+            priceLines: [],
+            fitted: false,
+        };
+    }
+
+    function priceSeries(handle) {
+        return handle.mode === "equity" ? handle.equity : handle.candles;
+    }
+
     function clearPriceLines(handle) {
+        var series = priceSeries(handle);
         handle.priceLines.forEach(function (line) {
-            handle.candles.removePriceLine(line);
+            series.removePriceLine(line);
         });
         handle.priceLines = [];
     }
 
     function addPriceLine(handle, price, color, title, style) {
         handle.priceLines.push(
-            handle.candles.createPriceLine({
+            priceSeries(handle).createPriceLine({
                 price: price,
                 color: color,
                 lineWidth: 1,
                 lineStyle: style,
-                // The on-chart title plus the legend below carry the numbers;
-                // axis labels would cover the price scale's own ticks.
                 axisLabelVisible: false,
                 title: title,
             })
@@ -269,7 +330,7 @@
         } else {
             appendLevelItems(handle, items, levels, precision);
         }
-        if ((asset.trailing_stop || []).length) {
+        if ((asset.trailing_stop || []).length && handle.mode === "asset") {
             items.push({ cls: "trail", text: "Trailing stop (ATR)" });
         }
 
@@ -330,27 +391,40 @@
 
     function renderHeader(card, asset, precision) {
         var position = asset.position || {};
-        var last = asset.candles.length
-            ? asset.candles[asset.candles.length - 1].close
-            : null;
+        var isEquity = asset.series === "equity";
+        var last = isEquity
+            ? (asset.equity || []).length
+                ? asset.equity[asset.equity.length - 1].value
+                : null
+            : asset.candles.length
+              ? asset.candles[asset.candles.length - 1].close
+              : null;
         card.price.textContent = formatPrice(last, precision);
 
-        var current = asset.current_regime;
-        var name = current ? current.regime : null;
-        card.regime.className =
-            "regime-badge " + (name ? name.toLowerCase() : "unknown");
-        card.regime.textContent = name ? REGIME_LABELS[name] || name : "—";
-        card.regime.title = current
-            ? "Score " +
-              current.score +
-              " · ADX " +
-              current.adx +
-              " · RSI " +
-              current.rsi +
-              (current.provisional ? " (candle em formação)" : "")
-            : "";
+        if (isEquity) {
+            card.regime.hidden = true;
+        } else {
+            card.regime.hidden = false;
+            var current = asset.current_regime;
+            var name = current ? current.regime : null;
+            card.regime.className =
+                "regime-badge " + (name ? name.toLowerCase() : "unknown");
+            card.regime.textContent = name ? REGIME_LABELS[name] || name : "—";
+            card.regime.title = current
+                ? "Score " +
+                  current.score +
+                  " · ADX " +
+                  current.adx +
+                  " · RSI " +
+                  current.rsi +
+                  (current.provisional ? " (candle em formação)" : "")
+                : "";
+        }
 
         var pnl = position.open ? position.pnl_pct : null;
+        if (isEquity && position.pnl_pct != null) {
+            pnl = position.pnl_pct;
+        }
         card.pnl.className =
             "chart-pnl " + (pnl == null ? "" : pnl > 0 ? "up" : pnl < 0 ? "down" : "");
         card.pnl.textContent = pnl == null ? "" : formatPct(pnl);
@@ -367,14 +441,7 @@
         };
     }
 
-    function update(handle, card, asset) {
-        if (asset.error) {
-            card.error.hidden = false;
-            card.error.textContent = "Não foi possível carregar: " + asset.error;
-            return;
-        }
-        card.error.hidden = true;
-
+    function updateAsset(handle, card, asset) {
         if (!asset.candles || !asset.candles.length) {
             card.error.hidden = false;
             card.error.textContent = "Sem candles para exibir.";
@@ -391,7 +458,6 @@
             },
         });
 
-        // Keep the user's zoom across the 60s refresh.
         var range = handle.fitted
             ? handle.chart.timeScale().getVisibleLogicalRange()
             : null;
@@ -415,6 +481,54 @@
         }
     }
 
+    function updateEquity(handle, card, asset) {
+        var series = asset.equity || [];
+        if (!series.length) {
+            card.error.hidden = false;
+            card.error.textContent = "Sem dados de portfólio para exibir.";
+            return;
+        }
+
+        var precision = 2;
+        handle.equity.applyOptions({
+            priceFormat: {
+                type: "price",
+                precision: precision,
+                minMove: 0.01,
+            },
+        });
+
+        var range = handle.fitted
+            ? handle.chart.timeScale().getVisibleLogicalRange()
+            : null;
+
+        handle.equity.setData(series);
+        renderHeader(card, asset, precision);
+        renderLegend(handle, card, asset, precision);
+
+        if (range) {
+            handle.chart.timeScale().setVisibleLogicalRange(range);
+        } else {
+            handle.chart.timeScale().fitContent();
+            handle.fitted = true;
+        }
+    }
+
+    function update(handle, card, asset) {
+        if (asset.error) {
+            card.error.hidden = false;
+            card.error.textContent = "Não foi possível carregar: " + asset.error;
+            return;
+        }
+        card.error.hidden = true;
+
+        if (asset.series === "equity") {
+            updateEquity(handle, card, asset);
+            return;
+        }
+        updateAsset(handle, card, asset);
+    }
+
     window.TraderBotChart = {
         available: Boolean(LWC),
 
@@ -422,7 +536,10 @@
         mount: function (parent, asset) {
             var card = buildCard(asset);
             parent.appendChild(card.root);
-            var handle = buildChart(card.canvas);
+            var handle =
+                asset.series === "equity"
+                    ? buildEquityChart(card.canvas)
+                    : buildChart(card.canvas);
             var entry = { card: card, handle: handle };
             update(handle, card, asset);
             return entry;

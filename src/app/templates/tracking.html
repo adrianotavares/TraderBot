@@ -105,7 +105,8 @@
 
     function renderCharts(assets) {
         const grid = document.getElementById("chart-grid");
-        grid.classList.toggle("single", Boolean(selectedOperation));
+        const isEquity = assets.some((asset) => asset.series === "equity");
+        grid.classList.toggle("single", Boolean(selectedOperation) || isEquity);
         grid.querySelectorAll(":scope > .chart-error").forEach((node) => node.remove());
         const seen = new Set();
         assets.forEach((asset) => {
@@ -125,9 +126,13 @@
             TraderBotChart.dispose(entry);
             chartEntries.delete(code);
         });
-        const hasCharts = assets.some((asset) => !asset.error && asset.candles.length);
+        const hasCharts = assets.some((asset) => {
+            if (asset.error) return false;
+            if (asset.series === "equity") return (asset.equity || []).length;
+            return asset.candles.length;
+        });
         document.getElementById("chart-attribution").hidden = !assets.length;
-        document.getElementById("regime-key").hidden = !hasCharts;
+        document.getElementById("regime-key").hidden = !hasCharts || isEquity;
     }
 
     function showChartMessage(message) {
@@ -158,6 +163,10 @@
             );
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || "bad status");
+            if (!selectedOperation && data.aggregate) {
+                renderCharts([data.aggregate]);
+                return;
+            }
             renderCharts(data.assets || []);
         } catch (err) {
             showChartMessage(`Não foi possível carregar os gráficos: ${err.message}`);

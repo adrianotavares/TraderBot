@@ -4,11 +4,15 @@ import pytest
 
 from persistence.state_store import StateStore
 from services.chart_data import (
+    AGGREGATE_OPERATION_CODE,
+    aggregate_position,
+    build_aggregate_chart_payload,
     build_chart_payload,
     candle_period_seconds,
     candle_times,
     candles_to_series,
     compute_levels,
+    equity_series,
     is_closed,
     order_markers,
     parse_iso_seconds,
@@ -532,3 +536,75 @@ def test_build_chart_payload_omits_trailing_stop_for_other_strategies(detector, 
         now=candle_times(frame)[-1] + PERIOD,
     )
     assert payload["trailing_stop"] == []
+
+
+def test_equity_series_uses_fixed_quantities_and_stable_cash():
+    btc = _frame(10, base=100.0)
+    eth = _frame(10, base=50.0)
+    holdings = {
+        "BTCUSDT": {"stock_code": "BTC", "quantity": 0.5, "last_buy_price": 90.0},
+        "ETHUSDT": {"stock_code": "ETH", "quantity": 2.0, "last_buy_price": 45.0},
+        "USDT": {"stock_code": "USDT", "quantity": 100.0, "last_buy_price": 1.0},
+    }
+    series = equity_series(
+        {"BTCUSDT": btc, "ETHUSDT": eth},
+        holdings,
+        ["BTCUSDT", "ETHUSDT"],
+        bars=5,
+    )
+    assert len(series) == 5
+    last = series[-1]
+    btc_close = float(btc.iloc[-1]["close_price"])
+    eth_close = float(eth.iloc[-1]["close_price"])
+    assert last["value"] == round(0.5 * btc_close + 2.0 * eth_close + 100.0, 2)
+
+
+def test_build_aggregate_chart_payload_assembles_equity():
+    btc = _frame(10, base=100.0)
+    eth = _frame(10, base=50.0)
+    holdings = {
+        "BTCUSDT": {"stock_code": "BTC", "quantity": 0.5, "last_buy_price": 90.0},
+        "ETHUSDT": {"stock_code": "ETH", "quantity": 2.0, "last_buy_price": 45.0},
+    }
+
+    class _State:
+        actual_trade_position = True
+
+    payload = build_aggregate_chart_payload(
+        {"BTCUSDT": btc, "ETHUSDT": eth},
+        holdings=holdings,
+        states={"BTCUSDT": _State(), "ETHUSDT": _State()},
+        configured_codes=["BTCUSDT", "ETHUSDT"],
+        risk=_Risk(),
+        bars=5,
+        total_pnl_usd=10.0,
+        total_pnl_pct=4.0,
+    )
+    assert payload["operation_code"] == AGGREGATE_OPERATION_CODE
+    assert payload["series"] == "equity"
+    assert len(payload["equity"]) == 5
+    assert payload["levels"]["entry"] == round(0.5 * 90.0 + 2.0 * 45.0, 2)
+    assert payload["position"]["pnl_pct"] == 4.0
+
+
+def test_aggregate_position_sums_open_cost_basis():
+    holdings = {
+        "BTCUSDT": {"quantity": 0.5, "last_buy_price": 90.0},
+        "ETHUSDT": {"quantity": 2.0, "last_buy_price": 45.0},
+    }
+
+    class _Open:
+        actual_trade_position = True
+
+    class _Flat:
+        actual_trade_position = False
+
+    position = aggregate_position(
+        holdings,
+        {"BTCUSDT": _Open(), "ETHUSDT": _Flat()},
+        total_pnl_usd=1.0,
+        total_pnl_pct=2.0,
+    )
+    assert position["open"] is True
+    assert position["entry_price"] == 45.0
+    assert position["pnl_usd"] == 1.0

@@ -51,7 +51,12 @@ from security import (
     start_session,
     verify_password,
 )
-from services.chart_data import DEFAULT_BARS, WARMUP_CANDLES, build_chart_payload
+from services.chart_data import (
+    DEFAULT_BARS,
+    WARMUP_CANDLES,
+    build_aggregate_chart_payload,
+    build_chart_payload,
+)
 from services.market_data import MarketDataService
 from services.order_sync import DEFAULT_PROFIT_CUTOFF, sync_filled_orders_from_binance
 from services.outcome_history import (
@@ -233,14 +238,17 @@ def _empty_chart(asset, error: str) -> dict:
     }
 
 
-def _chart_holdings() -> dict:
+def _chart_holdings() -> tuple[dict, dict]:
     try:
         snapshot = get_portfolio_snapshot()
     except Exception:
         logging.warning("Building charts without portfolio data", exc_info=True)
-        return {}
+        return {}, {}
     return {
         holding["operation_code"]: holding for holding in snapshot.get("assets", [])
+    }, {
+        "total_pnl_usd": snapshot.get("total_pnl_usd"),
+        "total_pnl_pct": snapshot.get("total_pnl_pct"),
     }
 
 
@@ -271,10 +279,50 @@ def get_tracking_charts(
         testnet=settings.environment == "testnet",
     )
     store = StateStore()
+    candle_period = settings.timing.candle_period
+    holdings, portfolio_totals = _chart_holdings()
+
+    if not operation_code:
+        klines_by_symbol: dict = {}
+        states = {}
+        limit = min(1000, int(bars))
+        for asset in assets:
+            try:
+                market = MarketDataService(client, asset.operation_code, candle_period)
+                klines_by_symbol[asset.operation_code] = market.fetch_klines(limit=limit)
+                states[asset.operation_code] = store.load_state(asset.operation_code)
+            except Exception as exc:
+                logging.exception(
+                    "Aggregate chart skipped klines for %s", asset.operation_code
+                )
+                states[asset.operation_code] = store.load_state(asset.operation_code)
+
+        aggregate = build_aggregate_chart_payload(
+            klines_by_symbol,
+            holdings=holdings,
+            states=states,
+            configured_codes=[asset.operation_code for asset in assets],
+            risk=settings.risk,
+            bars=int(bars),
+            total_pnl_usd=portfolio_totals.get("total_pnl_usd"),
+            total_pnl_pct=portfolio_totals.get("total_pnl_pct"),
+        )
+        data = {
+            "candle_period": candle_period,
+            "strategy": settings.strategy.main,
+            "regime_enabled": settings.regime.enabled,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "assets": [],
+            "aggregate": aggregate,
+        }
+        with _chart_lock:
+            if len(_chart_cache) >= _CHART_CACHE_MAX_ENTRIES:
+                _chart_cache.clear()
+            _chart_cache[key] = {"ts": time.time(), "data": data}
+        return data
+
     detector = RegimeDetector(**settings.regime.model_dump())
     orders = store.list_orders(since=DEFAULT_PROFIT_CUTOFF)
-    holdings = _chart_holdings()
-    candle_period = settings.timing.candle_period
     limit = min(1000, int(bars) + WARMUP_CANDLES)
 
     charts = []
@@ -310,6 +358,7 @@ def get_tracking_charts(
         "regime_enabled": settings.regime.enabled,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "assets": charts,
+        "aggregate": None,
     }
     with _chart_lock:
         if len(_chart_cache) >= _CHART_CACHE_MAX_ENTRIES:

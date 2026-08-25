@@ -12,6 +12,7 @@ import routes  # noqa: E402
 from app import app  # noqa: E402
 from config.settings import TradingSettings  # noqa: E402
 from persistence.state_store import StateStore  # noqa: E402
+from services.chart_data import AGGREGATE_OPERATION_CODE  # noqa: E402
 
 PERIOD_MS = 4 * 3600 * 1000
 
@@ -59,7 +60,7 @@ class _FakeClient:
         self.calls.append((symbol, interval, limit))
         if symbol in self.failing:
             raise RuntimeError(f"binance is down for {symbol}")
-        return _raw_klines()
+        return _raw_klines(limit)
 
 
 def _settings(assets=None) -> TradingSettings:
@@ -102,6 +103,44 @@ class _Env:
     secret_key = "secret"
 
 
+def _portfolio_snapshot(**overrides):
+    base = {
+        "total_pnl_usd": 12.5,
+        "total_pnl_pct": 3.2,
+        "assets": [
+            {
+                "stock_code": "BTC",
+                "operation_code": "BTCUSDT",
+                "quantity": 0.1,
+                "price": 100.0,
+                "last_buy_price": 95.0,
+                "pnl_usd": 0.5,
+                "pnl_pct": 5.26,
+            },
+            {
+                "stock_code": "ETH",
+                "operation_code": "ETHUSDT",
+                "quantity": 2.0,
+                "price": 50.0,
+                "last_buy_price": 48.0,
+                "pnl_usd": 4.0,
+                "pnl_pct": 4.17,
+            },
+            {
+                "stock_code": "USDT",
+                "operation_code": "USDT",
+                "quantity": 500.0,
+                "price": 1.0,
+                "last_buy_price": 1.0,
+                "pnl_usd": 0.0,
+                "pnl_pct": 0.0,
+            },
+        ],
+    }
+    base.update(overrides)
+    return base
+
+
 @pytest.fixture
 def wired(monkeypatch, tmp_path):
     """Wire get_tracking_charts to a temp DB and a fake exchange."""
@@ -112,21 +151,31 @@ def wired(monkeypatch, tmp_path):
     monkeypatch.setattr(routes, "load_settings", lambda: (settings, _Env()))
     monkeypatch.setattr(routes, "get_spot_client", lambda *a, **k: client)
     monkeypatch.setattr(routes, "StateStore", lambda *a, **k: store)
-    monkeypatch.setattr(routes, "get_portfolio_snapshot", lambda: {"assets": []})
+    monkeypatch.setattr(
+        routes, "get_portfolio_snapshot", lambda: _portfolio_snapshot()
+    )
     return {"client": client, "store": store, "settings": settings}
 
 
-def test_charts_endpoint_returns_one_entry_per_asset(wired):
+def test_charts_todos_returns_aggregate_not_per_asset(wired):
     response = app.test_client().get("/api/tracking/charts")
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["candle_period"] == "4h"
     assert payload["strategy"] == "atr_trend"
-    assert [a["operation_code"] for a in payload["assets"]] == ["BTCUSDT", "ETHUSDT"]
+    assert payload["assets"] == []
+    aggregate = payload["aggregate"]
+    assert aggregate["operation_code"] == AGGREGATE_OPERATION_CODE
+    assert aggregate["series"] == "equity"
+    assert aggregate["stock_code"] == "Portfólio"
+    assert len(aggregate["equity"]) > 0
+    assert aggregate["regime"] == []
 
 
 def test_charts_include_candles_regime_and_trailing_stop(wired):
-    payload = app.test_client().get("/api/tracking/charts?bars=40").get_json()
+    payload = app.test_client().get(
+        "/api/tracking/charts?bars=40&operation_code=BTCUSDT"
+    ).get_json()
     asset = payload["assets"][0]
     assert len(asset["candles"]) == 40
     assert set(asset["candles"][0]) == {"time", "open", "high", "low", "close"}
@@ -136,15 +185,25 @@ def test_charts_include_candles_regime_and_trailing_stop(wired):
 
 
 def test_charts_fetch_warmup_beyond_the_charted_window(wired):
-    app.test_client().get("/api/tracking/charts?bars=40")
+    app.test_client().get("/api/tracking/charts?bars=40&operation_code=BTCUSDT")
     symbol, interval, limit = wired["client"].calls[0]
     assert interval == "4h"
+    assert symbol == "BTCUSDT"
     # The regime detector needs 60 candles and the atr_trend SMA up to 200.
     assert limit > 200
 
 
+def test_charts_todos_fetches_only_chart_window(wired):
+    app.test_client().get("/api/tracking/charts?bars=40")
+    limits = [call[2] for call in wired["client"].calls]
+    assert limits
+    assert all(limit == 40 for limit in limits)
+
+
 def test_charts_omit_levels_when_flat(wired):
-    payload = app.test_client().get("/api/tracking/charts?bars=30").get_json()
+    payload = app.test_client().get(
+        "/api/tracking/charts?bars=30&operation_code=BTCUSDT"
+    ).get_json()
     assert payload["assets"][0]["levels"] is None
     assert payload["assets"][0]["position"]["open"] is False
 
@@ -155,11 +214,29 @@ def test_charts_expose_levels_when_holding(wired):
     state.last_buy_price = 100.0
     wired["store"].save_state(state)
 
-    payload = app.test_client().get("/api/tracking/charts?bars=30").get_json()
+    payload = app.test_client().get(
+        "/api/tracking/charts?bars=30&operation_code=BTCUSDT"
+    ).get_json()
     levels = payload["assets"][0]["levels"]
     assert levels["entry"] == 100.0
     assert levels["take_profit"]["price"] == 107.0
     assert levels["stop_loss"]["price"] == 98.0
+
+
+def test_charts_aggregate_exposes_portfolio_levels(wired):
+    for code in ("BTCUSDT", "ETHUSDT"):
+        state = wired["store"].load_state(code)
+        state.actual_trade_position = True
+        wired["store"].save_state(state)
+
+    aggregate = app.test_client().get("/api/tracking/charts?bars=30").get_json()[
+        "aggregate"
+    ]
+    levels = aggregate["levels"]
+    # cost basis = 0.1 * 95 + 2.0 * 48 = 9.5 + 96 = 105.5
+    assert levels["entry"] == 105.5
+    assert levels["take_profit"]["price"] == pytest.approx(105.5 * 1.07)
+    assert aggregate["position"]["pnl_pct"] == 3.2
 
 
 def test_charts_filter_by_operation_code(wired):
@@ -167,6 +244,7 @@ def test_charts_filter_by_operation_code(wired):
         "/api/tracking/charts?operation_code=ETHUSDT&bars=30"
     ).get_json()
     assert [a["operation_code"] for a in payload["assets"]] == ["ETHUSDT"]
+    assert payload["aggregate"] is None
 
 
 def test_charts_unknown_operation_code_is_404(wired):
@@ -174,21 +252,38 @@ def test_charts_unknown_operation_code_is_404(wired):
     assert response.status_code == 404
 
 
+def test_charts_aggregate_skips_a_failing_symbol(monkeypatch, tmp_path):
+    """A broken symbol is omitted from the aggregate instead of blanking Todos."""
+    client = _FakeClient(failing={"BTCUSDT"})
+    monkeypatch.setattr(routes, "load_settings", lambda: (_settings(), _Env()))
+    monkeypatch.setattr(routes, "get_spot_client", lambda *a, **k: client)
+    monkeypatch.setattr(routes, "StateStore", lambda *a, **k: StateStore(tmp_path / "x.db"))
+    monkeypatch.setattr(
+        routes, "get_portfolio_snapshot", lambda: _portfolio_snapshot()
+    )
+
+    response = app.test_client().get("/api/tracking/charts?bars=30")
+    assert response.status_code == 200
+    aggregate = response.get_json()["aggregate"]
+    assert aggregate["error"] is None
+    assert aggregate["equity"]
+
+
 def test_charts_isolate_a_failing_symbol(monkeypatch, tmp_path):
-    """A broken symbol reports its own error instead of blanking the page."""
+    """A broken symbol reports its own error on the single-asset view."""
     client = _FakeClient(failing={"BTCUSDT"})
     monkeypatch.setattr(routes, "load_settings", lambda: (_settings(), _Env()))
     monkeypatch.setattr(routes, "get_spot_client", lambda *a, **k: client)
     monkeypatch.setattr(routes, "StateStore", lambda *a, **k: StateStore(tmp_path / "x.db"))
     monkeypatch.setattr(routes, "get_portfolio_snapshot", lambda: {"assets": []})
 
-    response = app.test_client().get("/api/tracking/charts?bars=30")
+    response = app.test_client().get(
+        "/api/tracking/charts?bars=30&operation_code=BTCUSDT"
+    )
     assert response.status_code == 200
-    assets = {a["operation_code"]: a for a in response.get_json()["assets"]}
-    assert "binance is down" in assets["BTCUSDT"]["error"]
-    assert assets["BTCUSDT"]["candles"] == []
-    assert assets["ETHUSDT"]["error"] is None
-    assert assets["ETHUSDT"]["candles"]
+    asset = response.get_json()["assets"][0]
+    assert "binance is down" in asset["error"]
+    assert asset["candles"] == []
 
 
 def test_charts_survive_a_portfolio_outage(monkeypatch, tmp_path, wired):
@@ -198,7 +293,7 @@ def test_charts_survive_a_portfolio_outage(monkeypatch, tmp_path, wired):
     monkeypatch.setattr(routes, "get_portfolio_snapshot", boom)
     response = app.test_client().get("/api/tracking/charts?bars=30")
     assert response.status_code == 200
-    assert response.get_json()["assets"][0]["candles"]
+    assert response.get_json()["aggregate"]["equity"] == []
 
 
 def test_charts_are_cached_between_requests(wired):
@@ -226,12 +321,14 @@ def test_charts_reject_invalid_bars(wired):
 
 
 def test_charts_clamp_bars(wired):
-    payload = app.test_client().get("/api/tracking/charts?bars=9999").get_json()
+    payload = app.test_client().get(
+        "/api/tracking/charts?bars=9999&operation_code=BTCUSDT"
+    ).get_json()
     assert len(payload["assets"][0]["candles"]) <= 500
 
 
 def test_charts_persist_regime_history(wired):
-    app.test_client().get("/api/tracking/charts?bars=30")
+    app.test_client().get("/api/tracking/charts?bars=30&operation_code=BTCUSDT")
     rows = wired["store"].list_regime("BTCUSDT")
     assert rows
     assert {row["source"] for row in rows} == {"backfill"}
