@@ -12,7 +12,7 @@ import routes  # noqa: E402
 from app import app  # noqa: E402
 from config.settings import TradingSettings  # noqa: E402
 from persistence.state_store import StateStore  # noqa: E402
-from services.chart_data import AGGREGATE_OPERATION_CODE  # noqa: E402
+from services.chart_data import AGGREGATE_OPERATION_CODE, MAX_BARS  # noqa: E402
 
 PERIOD_MS = 4 * 3600 * 1000
 
@@ -324,7 +324,7 @@ def test_charts_clamp_bars(wired):
     payload = app.test_client().get(
         "/api/tracking/charts?bars=9999&operation_code=BTCUSDT"
     ).get_json()
-    assert len(payload["assets"][0]["candles"]) <= 500
+    assert len(payload["assets"][0]["candles"]) <= MAX_BARS
 
 
 def test_charts_persist_regime_history(wired):

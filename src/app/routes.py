@@ -53,6 +53,8 @@ from security import (
 )
 from services.chart_data import (
     DEFAULT_BARS,
+    MAX_BARS,
+    MIN_BARS,
     WARMUP_CANDLES,
     build_aggregate_chart_payload,
     build_chart_payload,
@@ -585,7 +587,7 @@ def get_profit():
 @routes.route("/api/tracking/charts", methods=["GET"])
 def api_tracking_charts():
     try:
-        bars = max(20, min(int(request.args.get("bars", DEFAULT_BARS)), 500))
+        bars = max(MIN_BARS, min(int(request.args.get("bars", DEFAULT_BARS)), MAX_BARS))
     except (TypeError, ValueError):
         return jsonify({"error": "bars must be an integer"}), 400
     try:

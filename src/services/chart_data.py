@@ -16,10 +16,17 @@ from indicators.atr import atr, compute_trailing_stop
 
 _PERIOD_UNIT_SECONDS = {"m": 60, "h": 3600, "d": 86400, "w": 604800}
 
+WEEK_SECONDS = 7 * 24 * 3600
+MONTH_SECONDS = 30 * 24 * 3600
+DAY_SECONDS = 24 * 3600
+
 # The regime detector needs 60 candles and the atr_trend SMA up to 200, so the
 # oldest charted candle is only as trustworthy as the warmup behind it.
 WARMUP_CANDLES = 260
 DEFAULT_BARS = 120
+# Binance klines cap at 1000; a single-asset fetch also reserves WARMUP_CANDLES.
+MIN_BARS = 20
+MAX_BARS = 740
 
 # Recomputing one candle's regime costs ~14ms, so a cold 120-candle window would
 # block a request for seconds. Backfill newest-first in bounded slices instead:
@@ -45,6 +52,14 @@ def candle_period_seconds(period: str) -> int:
     if amount <= 0:
         raise ValueError(f"unsupported candle period: {period!r}")
     return amount * unit
+
+
+def bars_for_lookback(period: str, seconds: int) -> int:
+    """How many candles of `period` cover a lookback window of `seconds`."""
+    if seconds <= 0:
+        raise ValueError("lookback must be positive")
+    size = candle_period_seconds(period)
+    return max(1, (seconds + size - 1) // size)
 
 
 def candle_times(stock_data: pd.DataFrame) -> list[int]:

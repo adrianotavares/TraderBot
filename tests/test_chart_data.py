@@ -5,7 +5,11 @@ import pytest
 from persistence.state_store import StateStore
 from services.chart_data import (
     AGGREGATE_OPERATION_CODE,
+    DAY_SECONDS,
+    MONTH_SECONDS,
+    WEEK_SECONDS,
     aggregate_position,
+    bars_for_lookback,
     build_aggregate_chart_payload,
     build_chart_payload,
     candle_period_seconds,
@@ -88,6 +92,29 @@ def test_candle_period_seconds(period, expected):
 def test_candle_period_seconds_rejects_garbage(period):
     with pytest.raises(ValueError):
         candle_period_seconds(period)
+
+
+@pytest.mark.parametrize(
+    "period,seconds,expected",
+    [
+        ("4h", DAY_SECONDS, 6),
+        ("1h", DAY_SECONDS, 24),
+        ("4h", WEEK_SECONDS, 42),
+        ("4h", MONTH_SECONDS, 180),
+        ("1h", WEEK_SECONDS, 168),
+        ("1h", MONTH_SECONDS, 720),
+        ("1d", WEEK_SECONDS, 7),
+        ("1d", MONTH_SECONDS, 30),
+        ("15m", WEEK_SECONDS, 672),
+    ],
+)
+def test_bars_for_lookback(period, seconds, expected):
+    assert bars_for_lookback(period, seconds) == expected
+
+
+def test_bars_for_lookback_rejects_non_positive():
+    with pytest.raises(ValueError):
+        bars_for_lookback("4h", 0)
 
 
 # --- candle conversion ----------------------------------------------------

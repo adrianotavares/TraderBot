@@ -229,6 +229,8 @@
             markers: LWC.createSeriesMarkers(candles, []),
             priceLines: [],
             fitted: false,
+            lastTime: null,
+            windowSeconds: null,
         };
     }
 
@@ -282,7 +284,35 @@
             equity: equity,
             priceLines: [],
             fitted: false,
+            lastTime: null,
+            windowSeconds: null,
         };
+    }
+
+    function applyTimeWindow(handle) {
+        var scale = handle.chart.timeScale();
+        var last = handle.lastTime;
+        var seconds = handle.windowSeconds;
+        if (last == null || !seconds) {
+            scale.fitContent();
+            return;
+        }
+        try {
+            scale.setVisibleRange({
+                from: last - seconds,
+                to: last,
+            });
+        } catch (err) {
+            scale.fitContent();
+        }
+    }
+
+    function restoreOrFit(handle) {
+        if (handle.fitted) {
+            return;
+        }
+        applyTimeWindow(handle);
+        handle.fitted = true;
     }
 
     function priceSeries(handle) {
@@ -448,7 +478,8 @@
             return;
         }
 
-        var last = asset.candles[asset.candles.length - 1].close;
+        var lastCandle = asset.candles[asset.candles.length - 1];
+        var last = lastCandle.close;
         var precision = precisionFor(last);
         handle.candles.applyOptions({
             priceFormat: {
@@ -463,6 +494,7 @@
             : null;
 
         handle.candles.setData(asset.candles);
+        handle.lastTime = lastCandle.time;
         var regime = asset.regime || [];
         REGIME_NAMES.forEach(function (name) {
             handle.bands[name].setData(bandData(regime, name));
@@ -476,8 +508,7 @@
         if (range) {
             handle.chart.timeScale().setVisibleLogicalRange(range);
         } else {
-            handle.chart.timeScale().fitContent();
-            handle.fitted = true;
+            restoreOrFit(handle);
         }
     }
 
@@ -503,14 +534,14 @@
             : null;
 
         handle.equity.setData(series);
+        handle.lastTime = series[series.length - 1].time;
         renderHeader(card, asset, precision);
         renderLegend(handle, card, asset, precision);
 
         if (range) {
             handle.chart.timeScale().setVisibleLogicalRange(range);
         } else {
-            handle.chart.timeScale().fitContent();
-            handle.fitted = true;
+            restoreOrFit(handle);
         }
     }
 
@@ -533,13 +564,14 @@
         available: Boolean(LWC),
 
         /** Build a card for `asset` and append it to `parent`. */
-        mount: function (parent, asset) {
+        mount: function (parent, asset, options) {
             var card = buildCard(asset);
             parent.appendChild(card.root);
             var handle =
                 asset.series === "equity"
                     ? buildEquityChart(card.canvas)
                     : buildChart(card.canvas);
+            handle.windowSeconds = options && options.windowSeconds;
             var entry = { card: card, handle: handle };
             update(handle, card, asset);
             return entry;
@@ -547,6 +579,13 @@
 
         update: function (entry, asset) {
             update(entry.handle, entry.card, asset);
+        },
+
+        /** Zoom the already-loaded series to the last `seconds` of market time. */
+        setWindow: function (entry, seconds) {
+            entry.handle.windowSeconds = seconds;
+            applyTimeWindow(entry.handle);
+            entry.handle.fitted = true;
         },
 
         dispose: function (entry) {

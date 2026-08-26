@@ -23,6 +23,11 @@
 
 <div class="toolbar">
     <div class="chips" id="asset-chips"></div>
+    <div class="chips range-chips" id="range-chips" role="group" aria-label="Período visível">
+        <button type="button" class="chip chip-range" data-range="day" title="1 dia" aria-label="1 dia">1d</button>
+        <button type="button" class="chip chip-range" data-range="week" title="1 semana" aria-label="1 semana">1w</button>
+        <button type="button" class="chip chip-range active" data-range="month" title="1 mês" aria-label="1 mês">1m</button>
+    </div>
     <button type="button" class="icon-btn" id="refresh-btn">
         <span class="material-symbols-outlined">refresh</span>
         Atualizar
@@ -60,15 +65,46 @@
 <script src="{{ url_for('static', filename='js/tracking_chart.js') }}"></script>
 <script>
     const ASSETS = {{ config.stocks_traded_list | tojson }};
+    const CANDLE_PERIOD = {{ config.CANDLE_PERIOD | tojson }};
     const REFRESH_MS = 8000;
     // A 4h candle barely moves in a minute, and each refresh costs one klines
     // call per asset against the same rate limit the bot uses.
     const CHART_REFRESH_MS = 60000;
-    const CHART_BARS_GRID = 120;
-    const CHART_BARS_SINGLE = 240;
+    const DAY_SECONDS = 24 * 3600;
+    const WEEK_SECONDS = 7 * 24 * 3600;
+    const MONTH_SECONDS = 30 * 24 * 3600;
+    const PERIOD_UNITS = { m: 60, h: 3600, d: 86400, w: 604800 };
+    const MAX_CHART_BARS = 740;
     let selectedOperation = "";
+    let selectedRange = "month";
     let chartEntries = new Map();
     let holdingsByOperation = {};
+
+    function candlePeriodSeconds(period) {
+        const text = String(period || "").trim().toLowerCase();
+        const unit = PERIOD_UNITS[text.slice(-1)];
+        const amount = parseInt(text.slice(0, -1), 10);
+        if (!unit || !amount) return 4 * 3600;
+        return amount * unit;
+    }
+
+    function barsForLookback(seconds) {
+        return Math.max(
+            20,
+            Math.min(
+                MAX_CHART_BARS,
+                Math.ceil(seconds / candlePeriodSeconds(CANDLE_PERIOD))
+            )
+        );
+    }
+
+    function windowSeconds() {
+        if (selectedRange === "day") return DAY_SECONDS;
+        if (selectedRange === "week") return WEEK_SECONDS;
+        return MONTH_SECONDS;
+    }
+
+    const CHART_BARS = barsForLookback(MONTH_SECONDS);
 
     function escapeHtml(text) {
         return String(text)
@@ -217,7 +253,9 @@
             }
             chartEntries.set(
                 asset.operation_code,
-                TraderBotChart.mount(grid, asset)
+                TraderBotChart.mount(grid, asset, {
+                    windowSeconds: windowSeconds(),
+                })
             );
         });
         chartEntries.forEach((entry, code) => {
@@ -253,7 +291,7 @@
             return;
         }
         const params = new URLSearchParams({
-            bars: String(selectedOperation ? CHART_BARS_SINGLE : CHART_BARS_GRID),
+            bars: String(CHART_BARS),
         });
         if (selectedOperation) params.set("operation_code", selectedOperation);
         try {
@@ -437,6 +475,17 @@
 
     document.getElementById("refresh-btn").onclick = () =>
         Promise.all([refreshAll(), loadCharts()]);
+    document.getElementById("range-chips").onclick = (event) => {
+        const button = event.target.closest("[data-range]");
+        if (!button || button.dataset.range === selectedRange) return;
+        selectedRange = button.dataset.range;
+        document.querySelectorAll("#range-chips .chip-range").forEach((node) => {
+            node.classList.toggle("active", node.dataset.range === selectedRange);
+        });
+        chartEntries.forEach((entry) =>
+            TraderBotChart.setWindow(entry, windowSeconds())
+        );
+    };
     renderChips();
     refreshAll();
     loadCharts();
