@@ -145,9 +145,12 @@ def test_profit_page_renders():
     assert "<h1>Profit</h1>" in html
     assert "Custo realizado" in html
     assert "Custo em aberto" in html
-    assert "Valor total agregado" in html
+    assert "Saldo total" in html
+    assert "Receita realizada" in html
+    assert "Valor total agregado" not in html
     assert "P&amp;L realizado" in html
     assert "Posição aberta" in html
+    assert "profit-warnings" in html
 
 
 def test_api_profit_returns_classified_operations(monkeypatch):
@@ -155,9 +158,14 @@ def test_api_profit_returns_classified_operations(monkeypatch):
         "routes.get_profit_board",
         lambda force_refresh=False: {
             "total_usd": 800.0,
+            "realized_proceeds_usd": 800.0,
+            "nav_usd": 661.59,
             "total_cost_usd": 600.0,
+            "open_cost_usd": 91.12,
             "total_pnl_usd": 200.0,
             "total_pnl_pct": 33.33,
+            "warnings": [],
+            "open_positions": [],
             "operations": [
                 {
                     "kind": "take_profit",
@@ -175,6 +183,8 @@ def test_api_profit_returns_classified_operations(monkeypatch):
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["total_usd"] == 800.0
+    assert payload["realized_proceeds_usd"] == 800.0
+    assert payload["nav_usd"] == 661.59
     assert payload["total_pnl_usd"] == 200.0
     assert payload["operations"][0]["kind"] == "take_profit"
     assert payload["operations"][0]["stock_code"] == "BTC"
@@ -189,6 +199,105 @@ def test_api_profit_returns_503_when_credentials_missing(monkeypatch):
     response = client.get("/api/profit")
     assert response.status_code == 503
     assert "Credenciais" in response.get_json()["error"]
+
+
+def test_get_profit_board_reconciles_live_inventory(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    import routes
+    from persistence.state_store import StateStore
+
+    store = StateStore(tmp_path / "profit.db")
+    settings = SimpleNamespace(
+        environment="testnet",
+        assets=[],
+        risk=SimpleNamespace(take_profit=[], stop_loss_pct=2.0),
+    )
+    env = SimpleNamespace(api_key="", secret_key="")
+    monkeypatch.setattr(routes, "StateStore", lambda: store)
+    monkeypatch.setattr(routes, "load_settings", lambda: (settings, env))
+    monkeypatch.setattr(routes, "rebuild_outcomes_from_orders", lambda *a, **k: 0)
+    monkeypatch.setattr(routes, "kind_hints_from_log", lambda *a, **k: {})
+    monkeypatch.setattr(
+        routes,
+        "match_trades_and_open_lots",
+        lambda *a, **k: ([], []),
+    )
+    monkeypatch.setattr(
+        routes,
+        "get_portfolio_snapshot",
+        lambda: {
+            "total_usd": 661.59,
+            "assets": [
+                {
+                    "stock_code": "ETH",
+                    "operation_code": "ETHUSDT",
+                    "quantity": 0.211,
+                    "last_buy_price": 2414.93,
+                }
+            ],
+        },
+    )
+    routes._history_cache["ts"] = 0.0
+    routes._history_cache["data"] = None
+    board = routes.get_profit_board(force_refresh=True)
+    assert board["nav_usd"] == 661.59
+    assert board["open_positions"][0]["source"] == "external"
+    assert board["open_positions"][0]["stock_code"] == "ETH"
+    assert board["warnings"][0]["code"] == "untracked_inventory"
+    routes._history_cache["ts"] = 0.0
+    routes._history_cache["data"] = None
+
+
+def test_get_profit_board_keeps_fifo_when_nav_unavailable(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    import routes
+    from persistence.state_store import StateStore
+
+    store = StateStore(tmp_path / "profit.db")
+    settings = SimpleNamespace(
+        environment="testnet",
+        assets=[],
+        risk=SimpleNamespace(take_profit=[], stop_loss_pct=2.0),
+    )
+    env = SimpleNamespace(api_key="", secret_key="")
+    monkeypatch.setattr(routes, "StateStore", lambda: store)
+    monkeypatch.setattr(routes, "load_settings", lambda: (settings, env))
+    monkeypatch.setattr(routes, "rebuild_outcomes_from_orders", lambda *a, **k: 0)
+    monkeypatch.setattr(routes, "kind_hints_from_log", lambda *a, **k: {})
+    monkeypatch.setattr(
+        routes,
+        "match_trades_and_open_lots",
+        lambda *a, **k: (
+            [],
+            [
+                {
+                    "kind": "open",
+                    "source": "orders",
+                    "stock_code": "SOL",
+                    "operation_code": "SOLUSDT",
+                    "quantity": 0.5,
+                    "buy_price": 140.0,
+                    "cost_usd": 70.0,
+                }
+            ],
+        ),
+    )
+
+    def raise_missing():
+        raise ValueError("Credenciais da Binance não configuradas")
+
+    monkeypatch.setattr(routes, "get_portfolio_snapshot", raise_missing)
+    routes._history_cache["ts"] = 0.0
+    routes._history_cache["data"] = None
+    board = routes.get_profit_board(force_refresh=True)
+    assert board["nav_usd"] is None
+    assert board["open_positions"][0]["stock_code"] == "SOL"
+    assert board["open_positions"][0]["source"] == "orders"
+    assert board["warnings"][0]["code"] == "nav_unavailable"
+    routes._history_cache["ts"] = 0.0
+    routes._history_cache["data"] = None
 
 
 def test_api_portfolio_returns_503_when_credentials_missing(monkeypatch):

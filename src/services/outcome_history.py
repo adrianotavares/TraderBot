@@ -6,11 +6,18 @@ from typing import Iterable, Optional
 
 from persistence.state_store import StateStore
 from services.order_sync import DEFAULT_PROFIT_CUTOFF
+from services.portfolio import STABLE_USD
 
 KIND_TAKE_PROFIT = "take_profit"
 KIND_STOP_LOSS = "stop_loss"
 KIND_SELL = "sell"
+KIND_OPEN = "open"
+SOURCE_ORDERS = "orders"
+SOURCE_EXTERNAL = "external"
+WARN_UNTRACKED = "untracked_inventory"
+WARN_NO_BALANCE = "lot_without_balance"
 META_REBUILT = "outcomes_from_orders_v3"
+_DUST_QTY = 1e-8
 
 
 def realized_pnl(
@@ -242,7 +249,8 @@ def match_trades_and_open_lots(
             cost_usd = qty * price if price > 0 else 0.0
             open_lots.append(
                 {
-                    "kind": "open",
+                    "kind": KIND_OPEN,
+                    "source": SOURCE_ORDERS,
                     "operation_code": operation_code,
                     "stock_code": stock_code_from_operation(operation_code),
                     "quantity": round(qty, 8),
@@ -259,6 +267,154 @@ def match_trades_and_open_lots(
 def open_lots_from_orders(orders: Iterable[dict]) -> list[dict]:
     _closed, open_lots = match_trades_and_open_lots(orders)
     return open_lots
+
+
+def _lot_qty(lot: dict) -> float:
+    return float(lot.get("quantity") or lot.get("qty") or 0)
+
+
+def _copy_lot(lot: dict, quantity: float) -> dict:
+    price = float(lot.get("buy_price") or lot.get("price") or 0)
+    copied = dict(lot)
+    copied["quantity"] = round(quantity, 8)
+    copied["buy_price"] = price
+    copied["cost_usd"] = round(quantity * price, 8) if price > 0 else 0.0
+    copied["source"] = lot.get("source") or SOURCE_ORDERS
+    copied["kind"] = KIND_OPEN
+    return copied
+
+
+def _step_for(symbol: str, step_sizes: dict[str, float] | None) -> float:
+    step = float((step_sizes or {}).get(symbol) or 0)
+    return step if step > 0 else _DUST_QTY
+
+
+def _fmt_qty(value: float) -> str:
+    text = f"{float(value):.8f}".rstrip("0").rstrip(".")
+    return text or "0"
+
+
+def _warning(
+    code: str,
+    symbol: str,
+    stock: str,
+    fifo_qty: float,
+    live_qty: float,
+) -> dict:
+    if code == WARN_UNTRACKED:
+        message = (
+            f"{stock} tem saldo live ({_fmt_qty(live_qty)}) acima dos BUY "
+            f"sincronizados ({_fmt_qty(fifo_qty)}). Lote externo incluído."
+        )
+    else:
+        message = (
+            f"{stock} tinha lotes FIFO ({_fmt_qty(fifo_qty)}) acima do saldo "
+            f"live ({_fmt_qty(live_qty)}). Lotes antigos foram cortados."
+        )
+    return {
+        "code": code,
+        "operation_code": symbol,
+        "stock_code": stock,
+        "fifo_qty": round(fifo_qty, 8),
+        "live_qty": round(live_qty, 8),
+        "message": message,
+    }
+
+
+def reconcile_open_lots(
+    open_lots: Iterable[dict],
+    holdings: Iterable[dict],
+    step_sizes: dict[str, float] | None = None,
+) -> tuple[list[dict], list[dict]]:
+    """Align FIFO leftovers with live balances.
+
+    Live qty is the source of truth. Extra FIFO is dropped from the oldest
+    lots first. Extra live qty becomes an ``external`` lot.
+    """
+    by_symbol: dict[str, list[dict]] = defaultdict(list)
+    for lot in open_lots or []:
+        symbol = str(lot.get("operation_code") or "")
+        if not symbol or _lot_qty(lot) <= _DUST_QTY:
+            continue
+        copied = _copy_lot(lot, _lot_qty(lot))
+        copied["stock_code"] = lot.get("stock_code") or stock_code_from_operation(symbol)
+        by_symbol[symbol].append(copied)
+
+    live: dict[str, dict] = {}
+    for holding in holdings or []:
+        stock = str(holding.get("stock_code") or "")
+        symbol = str(holding.get("operation_code") or "")
+        if not symbol or stock in STABLE_USD or symbol == stock:
+            continue
+        live[symbol] = {
+            "stock_code": stock,
+            "quantity": float(holding.get("quantity") or 0),
+            "last_buy_price": float(holding.get("last_buy_price") or 0),
+        }
+
+    symbols = sorted(set(by_symbol) | set(live))
+    reconciled: list[dict] = []
+    warnings: list[dict] = []
+
+    for symbol in symbols:
+        step = _step_for(symbol, step_sizes)
+        live_qty = float((live.get(symbol) or {}).get("quantity") or 0)
+        lots = list(by_symbol.get(symbol) or [])
+        fifo_qty = sum(_lot_qty(lot) for lot in lots)
+        stock = (live.get(symbol) or {}).get("stock_code") or (
+            lots[0]["stock_code"] if lots else stock_code_from_operation(symbol)
+        )
+
+        if live_qty <= _DUST_QTY:
+            if fifo_qty > _DUST_QTY:
+                warnings.append(
+                    _warning(WARN_NO_BALANCE, symbol, stock, fifo_qty, live_qty)
+                )
+            continue
+
+        if fifo_qty - live_qty > step:
+            remaining_drop = fifo_qty - live_qty
+            kept: list[dict] = []
+            for lot in lots:
+                qty = _lot_qty(lot)
+                if remaining_drop <= _DUST_QTY:
+                    kept.append(lot)
+                    continue
+                if qty <= remaining_drop + _DUST_QTY:
+                    remaining_drop -= qty
+                    continue
+                kept.append(_copy_lot(lot, qty - remaining_drop))
+                remaining_drop = 0.0
+            lots = kept
+            warnings.append(
+                _warning(WARN_NO_BALANCE, symbol, stock, fifo_qty, live_qty)
+            )
+            fifo_qty = sum(_lot_qty(lot) for lot in lots)
+
+        extra = live_qty - fifo_qty
+        if extra > step:
+            last_buy = float((live.get(symbol) or {}).get("last_buy_price") or 0)
+            lots.append(
+                {
+                    "kind": KIND_OPEN,
+                    "source": SOURCE_EXTERNAL,
+                    "operation_code": symbol,
+                    "stock_code": stock,
+                    "quantity": round(extra, 8),
+                    "buy_price": last_buy if last_buy > 0 else 0.0,
+                    "cost_usd": round(extra * last_buy, 8) if last_buy > 0 else 0.0,
+                    "occurred_at": "",
+                    "order_id": None,
+                }
+            )
+            warnings.append(
+                _warning(WARN_UNTRACKED, symbol, stock, fifo_qty, live_qty)
+            )
+
+        reconciled.extend(lots)
+
+    reconciled.sort(key=lambda row: (row.get("stock_code") or "", row.get("occurred_at") or ""))
+    return reconciled, warnings
 
 
 def kind_hints_from_log(
@@ -357,6 +513,8 @@ def rebuild_outcomes_from_orders(
 def build_outcome_board(
     outcomes: Iterable[dict],
     open_lots: Iterable[dict] | None = None,
+    nav_usd: float | None = None,
+    warnings: Iterable[dict] | None = None,
 ) -> dict:
     operations = []
     total_proceeds = 0.0
@@ -410,7 +568,8 @@ def build_outcome_board(
             cost_usd = quantity * buy_price
         open_positions.append(
             {
-                "kind": "open",
+                "kind": KIND_OPEN,
+                "source": lot.get("source") or SOURCE_ORDERS,
                 "stock_code": lot.get("stock_code") or "",
                 "operation_code": lot.get("operation_code") or "",
                 "quantity": quantity,
@@ -426,12 +585,16 @@ def build_outcome_board(
     if total_cost > 0:
         total_pnl_pct = round((total_pnl_usd / total_cost) * 100, 2)
 
+    proceeds = round(total_proceeds, 2)
     return {
         "total_cost_usd": round(total_cost, 2),
         "open_cost_usd": round(open_cost, 2),
-        "total_usd": round(total_proceeds, 2),
+        "realized_proceeds_usd": proceeds,
+        "total_usd": proceeds,
+        "nav_usd": None if nav_usd is None else round(float(nav_usd), 2),
         "total_pnl_usd": round(total_pnl_usd, 2),
         "total_pnl_pct": total_pnl_pct,
         "operations": operations,
         "open_positions": open_positions,
+        "warnings": list(warnings or []),
     }

@@ -3,10 +3,15 @@ from unittest.mock import MagicMock
 from persistence.state_store import StateStore
 from services.order_sync import sync_filled_orders_from_binance
 from services.outcome_history import (
+    SOURCE_EXTERNAL,
+    SOURCE_ORDERS,
+    WARN_NO_BALANCE,
+    WARN_UNTRACKED,
     build_outcome_board,
     match_closed_trades,
     rebuild_outcomes_from_orders,
     realized_pnl,
+    reconcile_open_lots,
 )
 
 
@@ -397,7 +402,177 @@ def test_build_outcome_board_includes_open_cost_and_skips_unfilled():
     assert board["total_cost_usd"] == 13.02
     assert board["open_cost_usd"] == 9.9
     assert board["total_usd"] == 13.97
+    assert board["realized_proceeds_usd"] == 13.97
+    assert board["nav_usd"] is None
+    assert board["warnings"] == []
     assert board["total_pnl_usd"] == 0.95
     assert len(board["operations"]) == 1
     assert len(board["open_positions"]) == 1
     assert board["open_positions"][0]["stock_code"] == "ETH"
+    assert board["open_positions"][0]["source"] == SOURCE_ORDERS
+
+
+def test_reconcile_open_lots_adds_external_when_live_exceeds_fifo():
+    lots, warnings = reconcile_open_lots(
+        [],
+        [
+            {
+                "stock_code": "ETH",
+                "operation_code": "ETHUSDT",
+                "quantity": 0.211,
+                "last_buy_price": 2414.93,
+            }
+        ],
+    )
+    assert len(lots) == 1
+    assert lots[0]["source"] == SOURCE_EXTERNAL
+    assert lots[0]["quantity"] == 0.211
+    assert abs(lots[0]["cost_usd"] - 0.211 * 2414.93) < 1e-6
+    assert warnings[0]["code"] == WARN_UNTRACKED
+    assert "ETH" in warnings[0]["message"]
+
+
+def test_reconcile_open_lots_clips_oldest_when_fifo_exceeds_live():
+    lots, warnings = reconcile_open_lots(
+        [
+            {
+                "operation_code": "XRPUSDT",
+                "stock_code": "XRP",
+                "quantity": 0.10,
+                "buy_price": 2.5,
+                "cost_usd": 0.25,
+                "occurred_at": "2026-08-10T00:00:00+00:00",
+            }
+        ],
+        [
+            {
+                "stock_code": "XRP",
+                "operation_code": "XRPUSDT",
+                "quantity": 0.077,
+                "last_buy_price": 2.5,
+            }
+        ],
+    )
+    assert len(lots) == 1
+    assert abs(lots[0]["quantity"] - 0.077) < 1e-9
+    assert abs(lots[0]["cost_usd"] - 0.077 * 2.5) < 1e-9
+    assert lots[0]["source"] == SOURCE_ORDERS
+    assert warnings[0]["code"] == WARN_NO_BALANCE
+
+
+def test_reconcile_open_lots_clips_oldest_of_two_lots():
+    lots, warnings = reconcile_open_lots(
+        [
+            {
+                "operation_code": "XRPUSDT",
+                "stock_code": "XRP",
+                "quantity": 0.06,
+                "buy_price": 2.0,
+                "occurred_at": "2026-08-01T00:00:00+00:00",
+            },
+            {
+                "operation_code": "XRPUSDT",
+                "stock_code": "XRP",
+                "quantity": 0.04,
+                "buy_price": 3.0,
+                "occurred_at": "2026-08-10T00:00:00+00:00",
+            },
+        ],
+        [{"stock_code": "XRP", "operation_code": "XRPUSDT", "quantity": 0.077}],
+    )
+    assert warnings[0]["code"] == WARN_NO_BALANCE
+    by_price = {row["buy_price"]: row["quantity"] for row in lots}
+    assert abs(by_price[2.0] - 0.037) < 1e-9
+    assert abs(by_price[3.0] - 0.04) < 1e-9
+    assert abs(sum(row["quantity"] for row in lots) - 0.077) < 1e-9
+
+
+def test_reconcile_open_lots_respects_step_size_as_dust():
+    lots, warnings = reconcile_open_lots(
+        [
+            {
+                "operation_code": "XRPUSDT",
+                "stock_code": "XRP",
+                "quantity": 0.10,
+                "buy_price": 2.0,
+            }
+        ],
+        [{"stock_code": "XRP", "operation_code": "XRPUSDT", "quantity": 0.077}],
+        step_sizes={"XRPUSDT": 0.1},
+    )
+    assert len(lots) == 1
+    assert abs(lots[0]["quantity"] - 0.10) < 1e-9
+    assert warnings == []
+
+
+def test_reconcile_open_lots_ignores_dust_difference():
+    lots, warnings = reconcile_open_lots(
+        [
+            {
+                "operation_code": "SOLUSDT",
+                "stock_code": "SOL",
+                "quantity": 0.5,
+                "buy_price": 140.0,
+            }
+        ],
+        [
+            {
+                "stock_code": "SOL",
+                "operation_code": "SOLUSDT",
+                "quantity": 0.5 + 1e-10,
+                "last_buy_price": 140.0,
+            }
+        ],
+    )
+    assert len(lots) == 1
+    assert abs(lots[0]["quantity"] - 0.5) < 1e-9
+    assert warnings == []
+
+
+def test_reconcile_open_lots_skips_stable_quote():
+    lots, warnings = reconcile_open_lots(
+        [],
+        [{"stock_code": "USDT", "operation_code": "USDT", "quantity": 80.0}],
+    )
+    assert lots == []
+    assert warnings == []
+
+
+def test_reconcile_open_lots_discards_when_live_is_flat():
+    lots, warnings = reconcile_open_lots(
+        [
+            {
+                "operation_code": "LINKUSDT",
+                "stock_code": "LINK",
+                "quantity": 1.0,
+                "buy_price": 10.0,
+            }
+        ],
+        [{"stock_code": "LINK", "operation_code": "LINKUSDT", "quantity": 0.0}],
+    )
+    assert lots == []
+    assert warnings[0]["code"] == WARN_NO_BALANCE
+
+
+def test_build_outcome_board_uses_reconciled_nav_and_external_source():
+    board = build_outcome_board(
+        [],
+        open_lots=[
+            {
+                "kind": "open",
+                "source": SOURCE_EXTERNAL,
+                "stock_code": "ETH",
+                "operation_code": "ETHUSDT",
+                "quantity": 0.211,
+                "buy_price": 2414.93,
+                "cost_usd": 0.211 * 2414.93,
+            }
+        ],
+        nav_usd=661.59,
+        warnings=[{"code": WARN_UNTRACKED, "message": "ETH externo"}],
+    )
+    assert board["nav_usd"] == 661.59
+    assert board["realized_proceeds_usd"] == 0.0
+    assert board["open_positions"][0]["source"] == SOURCE_EXTERNAL
+    assert board["warnings"][0]["code"] == WARN_UNTRACKED
+
