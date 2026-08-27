@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import pytest
 
 from services.market_data import MarketDataService
@@ -39,3 +41,29 @@ def test_size_quantity_returns_zero_when_quote_cannot_meet_notional():
         max_quote=4.0,
     )
     assert qty == 0.0
+
+
+def test_place_market_sells_without_position_guard():
+    from services.order_executor import OrderExecutor
+
+    client = MagicMock()
+    client.create_order.return_value = {
+        "symbol": "ETHUSDT",
+        "orderId": 9,
+        "side": "SELL",
+        "type": "MARKET",
+        "status": "FILLED",
+        "executedQty": "1.0",
+        "cummulativeQuoteQty": "2000",
+        "price": "0",
+        "transactTime": 1_700_000_000_000,
+        "fills": [{"price": "2000", "commissionAsset": "USDT"}],
+    }
+    executor = OrderExecutor(client, "ETHUSDT", "ETH", 0.01, 0.0001)
+    order = executor.place_market("SELL", 1.0)
+    assert order["status"] == "FILLED"
+    client.create_order.assert_called_once()
+    kwargs = client.create_order.call_args.kwargs
+    assert kwargs["symbol"] == "ETHUSDT"
+    assert kwargs["side"] == "SELL"
+    assert kwargs["type"] == "MARKET"

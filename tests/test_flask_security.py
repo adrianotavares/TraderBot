@@ -70,6 +70,7 @@ def test_protected_paths():
     assert is_protected_path("/get-config")
     assert not is_protected_path("/")
     assert not is_protected_path("/profit")
+    assert not is_protected_path("/balance")
 
 
 def test_tokens_match():
@@ -90,14 +91,14 @@ def test_token_is_never_rendered_in_html(monkeypatch):
     monkeypatch.setenv("FLASK_TOKEN", "token-que-nao-deve-vazar")
     monkeypatch.delenv("DASHBOARD_PASSWORD_HASH", raising=False)
     client = app.test_client()
-    for path in ("/", "/profit", "/config"):
+    for path in ("/", "/profit", "/config", "/balance"):
         body = client.get(path).get_data(as_text=True)
         assert "token-que-nao-deve-vazar" not in body
 
 
 def test_html_pages_require_login(password_env):
     client = app.test_client()
-    for path in ("/", "/profit", "/config"):
+    for path in ("/", "/profit", "/config", "/balance"):
         response = client.get(path)
         assert response.status_code == 302
         assert "/login" in response.headers["Location"]
@@ -152,6 +153,7 @@ def test_login_success_grants_access(password_env):
     response = _login(client)
     assert response.status_code == 302
     assert client.get("/").status_code == 200
+    assert client.get("/balance").status_code == 200
     assert client.get("/api/logs").status_code == 200
 
 
@@ -200,6 +202,11 @@ def test_state_changing_request_requires_csrf(password_env):
         "/api/config/validate", json={}, headers={"X-TraderBot-CSRF": csrf}
     )
     assert allowed.status_code == 200
+
+    denied_liq = client.post(
+        "/api/portfolio/liquidate/preview", json={"symbols": ["ETHUSDT"]}
+    )
+    assert denied_liq.status_code == 403
 
 
 def test_api_token_bypasses_session_and_csrf(monkeypatch, password_env):

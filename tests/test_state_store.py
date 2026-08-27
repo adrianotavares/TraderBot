@@ -99,3 +99,12 @@ def test_daily_risk_roundtrip_and_derived(tmp_path):
     assert derived["loss_usdt"] == pytest.approx(15.0)
     assert store.derived_daily_risk("2026-08-21", "BTCUSDT")["trades"] == 0
 
+
+def test_action_hold_roundtrip(tmp_path):
+    store = StateStore(tmp_path / "test.db")
+    assert store.is_action_hold() is False
+    store.set_action_hold(True)
+    assert store.is_action_hold() is True
+    store.set_action_hold(False)
+    assert store.is_action_hold() is False
+

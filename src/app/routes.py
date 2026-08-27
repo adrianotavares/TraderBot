@@ -69,6 +69,13 @@ from services.outcome_history import (
     rebuild_outcomes_from_orders,
 )
 from services.portfolio import fetch_portfolio
+from services.portfolio_actions import (
+    PortfolioActionError,
+    execute_liquidate,
+    execute_rebalance,
+    preview_liquidate,
+    preview_rebalance,
+)
 from services.regime_detector import RegimeDetector
 
 routes = Blueprint("routes", __name__)
@@ -81,6 +88,7 @@ _CHART_CACHE_TTL = 60.0
 _CHART_CACHE_MAX_ENTRIES = 8
 _portfolio_lock = threading.Lock()
 _portfolio_cache = {"ts": 0.0, "data": None}
+_portfolio_action_lock = threading.Lock()
 _history_lock = threading.Lock()
 _history_cache = {"ts": 0.0, "data": None}
 _chart_lock = threading.Lock()
@@ -144,6 +152,24 @@ def get_portfolio_snapshot():
         _portfolio_cache["ts"] = time.time()
         _portfolio_cache["data"] = snapshot
     return snapshot
+
+
+def _invalidate_portfolio_cache() -> None:
+    with _portfolio_lock:
+        _portfolio_cache["data"] = None
+        _portfolio_cache["ts"] = 0.0
+
+
+def _spot_client_for_settings():
+    settings, env = load_settings()
+    if not env.api_key or not env.secret_key:
+        raise ValueError("Credenciais da Binance não configuradas")
+    client = get_spot_client(
+        env.api_key,
+        env.secret_key,
+        testnet=settings.environment == "testnet",
+    )
+    return settings, client
 
 
 def get_profit_board(force_refresh: bool = False):
@@ -544,6 +570,16 @@ def profit_page():
     )
 
 
+@routes.route("/balance")
+def balance_page():
+    settings, _ = load_settings()
+    return render_template(
+        "balance.html",
+        config=_dashboard_config(settings),
+        active_page="balance",
+    )
+
+
 @routes.route("/config")
 def config_page():
     settings, _ = load_settings()
@@ -571,6 +607,125 @@ def get_portfolio():
         return jsonify({"error": str(e)}), 503
     except Exception as e:
         return jsonify({"error": f"Erro ao carregar saldo: {str(e)}"}), 500
+
+
+def _action_busy_response():
+    return jsonify({"error": "Já existe uma ação de portfólio em andamento"}), 409
+
+
+def _portfolio_action_error_response(exc: PortfolioActionError):
+    return jsonify({"error": str(exc), "blockers": exc.blockers}), 400
+
+
+@routes.route("/api/portfolio/hold", methods=["GET"])
+def api_portfolio_hold_status():
+    store = StateStore()
+    return jsonify({"hold": store.is_action_hold()})
+
+
+@routes.route("/api/portfolio/hold", methods=["POST"])
+def api_portfolio_hold():
+    payload = request.get_json(silent=True) or {}
+    if payload.get("hold") is not False:
+        return jsonify({"error": "Use hold=false para liberar o pause de ciclos"}), 400
+    store = StateStore()
+    store.set_action_hold(False)
+    log_event(
+        logging.WARNING,
+        "Dashboard cleared portfolio action hold",
+        event="portfolio_hold_cleared",
+    )
+    return jsonify({"hold": False})
+
+
+@routes.route("/api/portfolio/rebalance/preview", methods=["POST"])
+def api_rebalance_preview():
+    payload = request.get_json(silent=True) or {}
+    try:
+        settings, client = _spot_client_for_settings()
+        result = preview_rebalance(client, settings.assets, payload.get("weights"))
+        result["environment"] = settings.environment
+        return jsonify(result)
+    except PortfolioActionError as exc:
+        return _portfolio_action_error_response(exc)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 503
+    except Exception as e:
+        return jsonify({"error": f"Erro ao pré-visualizar Balance: {str(e)}"}), 500
+
+
+@routes.route("/api/portfolio/rebalance", methods=["POST"])
+def api_rebalance_execute():
+    payload = request.get_json(silent=True) or {}
+    if not _portfolio_action_lock.acquire(blocking=False):
+        return _action_busy_response()
+    try:
+        settings, client = _spot_client_for_settings()
+        store = StateStore()
+        result = execute_rebalance(
+            client,
+            settings.assets,
+            payload.get("weights"),
+            store,
+            payload.get("confirm", ""),
+        )
+        result["environment"] = settings.environment
+        _invalidate_portfolio_cache()
+        status = 200 if result.get("ok") else 207
+        return jsonify(result), status
+    except PortfolioActionError as exc:
+        return _portfolio_action_error_response(exc)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 503
+    except Exception as e:
+        return jsonify({"error": f"Erro ao executar Balance: {str(e)}"}), 500
+    finally:
+        _portfolio_action_lock.release()
+
+
+@routes.route("/api/portfolio/liquidate/preview", methods=["POST"])
+def api_liquidate_preview():
+    payload = request.get_json(silent=True) or {}
+    try:
+        settings, client = _spot_client_for_settings()
+        result = preview_liquidate(client, settings.assets, payload.get("symbols"))
+        result["environment"] = settings.environment
+        return jsonify(result)
+    except PortfolioActionError as exc:
+        return _portfolio_action_error_response(exc)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 503
+    except Exception as e:
+        return jsonify({"error": f"Erro ao pré-visualizar Liquidate: {str(e)}"}), 500
+
+
+@routes.route("/api/portfolio/liquidate", methods=["POST"])
+def api_liquidate_execute():
+    payload = request.get_json(silent=True) or {}
+    if not _portfolio_action_lock.acquire(blocking=False):
+        return _action_busy_response()
+    try:
+        settings, client = _spot_client_for_settings()
+        store = StateStore()
+        result = execute_liquidate(
+            client,
+            settings.assets,
+            payload.get("symbols"),
+            store,
+            payload.get("confirm", ""),
+        )
+        result["environment"] = settings.environment
+        _invalidate_portfolio_cache()
+        status = 200 if result.get("ok") else 207
+        return jsonify(result), status
+    except PortfolioActionError as exc:
+        return _portfolio_action_error_response(exc)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 503
+    except Exception as e:
+        return jsonify({"error": f"Erro ao executar Liquidate: {str(e)}"}), 500
+    finally:
+        _portfolio_action_lock.release()
 
 
 @routes.route("/api/profit", methods=["GET"])

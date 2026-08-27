@@ -63,6 +63,18 @@ class OrderExecutor:
         createLogOrder(order)
         return order
 
+    def place_market(self, side: str, quantity: float) -> Optional[dict]:
+        """MARKET order without the strategy position_open guard."""
+        quantity = self._adjust(quantity, as_string=True)
+        order = self.client.create_order(
+            symbol=self.operation_code,
+            side=SIDE_BUY if side == "BUY" else SIDE_SELL,
+            type=ORDER_TYPE_MARKET,
+            quantity=quantity,
+        )
+        createLogOrder(order)
+        return order
+
     def buy_limited(self, stock_data, traded_quantity: float, price: float = 0) -> Optional[dict]:
         close_price = stock_data["close_price"].iloc[-1]
         volume = stock_data["volume"].iloc[-1]

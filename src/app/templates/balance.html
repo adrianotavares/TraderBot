@@ -1,0 +1,470 @@
+{% extends "base.html" %}
+{% block title %}Balance{% endblock %}
+{% block content %}
+<h1>Balance</h1>
+<p class="subtitle">
+    Ajustar pesos da carteira ou liquidar pares do YAML. Não altera
+    <code>traded_percentage</code> no Config. Ordens são MARKET; o bot pausa
+    os ciclos enquanto a ação corre.
+</p>
+
+<div id="hold-banner" class="impact-banner warn" hidden>
+    O bot está em hold (ciclos pausados). Libere o hold se uma ação anterior
+    ficou pela metade, ou tente de novo.
+    <button type="button" class="icon-btn" id="release-hold-btn">Liberar hold</button>
+</div>
+<div id="engine-banner" class="impact-banner info">
+    Liquidate e Balance não desligam o bot. No próximo ciclo após o hold,
+    a estratégia pode reentrar.
+</div>
+<div id="status-banner" class="impact-banner error" hidden></div>
+
+<div class="portfolio-summary" id="balance-summary">
+    <div class="portfolio-metric">
+        <span class="portfolio-label">NAV</span>
+        <span class="portfolio-value" id="nav-value">—</span>
+    </div>
+    <div class="portfolio-metric">
+        <span class="portfolio-label">Soma dos alvos</span>
+        <span class="portfolio-value" id="weight-sum">—</span>
+    </div>
+    <div class="portfolio-metric">
+        <span class="portfolio-label">Ambiente</span>
+        <span class="portfolio-value" id="env-value">{{ environment }}</span>
+    </div>
+</div>
+
+<div class="toolbar">
+    <button type="button" class="icon-btn" id="refresh-btn">
+        <span class="material-symbols-outlined">refresh</span>
+        Atualizar
+    </button>
+</div>
+
+<section class="form-card">
+    <h2 class="section-title">Balancear</h2>
+    <p class="field-help">
+        Uma linha por par configurado. O alvo % é one-shot: soma deve ser 100.
+        Campos começam no peso atual (nenhuma ordem se você não mudar).
+    </p>
+    <div class="table-wrap">
+        <table class="balance-table" id="balance-table">
+            <thead>
+                <tr>
+                    <th>Par</th>
+                    <th class="num">Qty</th>
+                    <th class="num">Valor</th>
+                    <th class="num">Peso atual</th>
+                    <th class="num">Alvo %</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+    <div id="balance-empty" class="empty" hidden>Nenhum par no YAML.</div>
+    <div class="form-actions">
+        <button type="button" class="icon-btn" id="preview-balance-btn">
+            Pré-visualizar
+        </button>
+        <button type="button" class="btn-primary" id="balance-btn" disabled>
+            Balance
+        </button>
+    </div>
+    <div id="balance-preview" class="preview-list" hidden></div>
+</section>
+
+<section class="form-card">
+    <h2 class="section-title">Liquidar</h2>
+    <p class="field-help">
+        Marque os pares a vender. O botão liquida só o que estiver marcado —
+        um, vários ou todos.
+    </p>
+    <div class="toolbar">
+        <button type="button" class="icon-btn" id="select-all-btn">Marcar todos</button>
+        <button type="button" class="icon-btn" id="select-none-btn">Desmarcar todos</button>
+    </div>
+    <div id="liquidate-list" class="liquidate-list"></div>
+    <div class="form-actions">
+        <button type="button" class="icon-btn" id="preview-liquidate-btn">
+            Pré-visualizar
+        </button>
+        <button type="button" class="icon-btn danger" id="liquidate-btn" disabled>
+            Liquidate
+        </button>
+    </div>
+    <div id="liquidate-preview" class="preview-list" hidden></div>
+</section>
+
+<div id="confirm-modal" class="modal" hidden>
+    <div class="modal-card">
+        <h2 id="modal-title">Confirmar</h2>
+        <p id="modal-env" class="field-help"></p>
+        <pre id="modal-detail" class="modal-detail"></pre>
+        <label class="field">
+            <span>Digite <strong id="modal-word"></strong> para confirmar</span>
+            <input id="modal-input" type="text" autocomplete="off" />
+        </label>
+        <div class="form-actions">
+            <button type="button" class="icon-btn" id="modal-cancel">Cancelar</button>
+            <button type="button" class="btn-primary" id="modal-ok" disabled>Confirmar</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const YAML_ASSETS = {{ config.stocks_traded_list | tojson }};
+    const ENV_NAME = {{ environment | tojson }};
+    let holdings = [];
+    let nav = 0;
+    let pendingAction = null;
+
+    function escapeHtml(text) {
+        return String(text)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#39;");
+    }
+
+    function formatUsd(value) {
+        return Number(value).toLocaleString("pt-BR", {
+            style: "currency",
+            currency: "USD",
+        });
+    }
+
+    function formatQty(value) {
+        return Number(value).toLocaleString("pt-BR", { maximumFractionDigits: 8 });
+    }
+
+    function showError(message) {
+        const banner = document.getElementById("status-banner");
+        banner.hidden = !message;
+        banner.textContent = message || "";
+    }
+
+    function yamlPairs() {
+        return YAML_ASSETS.filter((row) => row.operationCode && row.stockCode);
+    }
+
+    function holdingFor(symbol) {
+        return holdings.find((row) => row.operation_code === symbol) || null;
+    }
+
+    function isQuote(row) {
+        return row.operation_code === row.stock_code;
+    }
+
+    function currentWeight(usdValue) {
+        if (!nav) return 0;
+        return (Number(usdValue) / nav) * 100;
+    }
+
+    function parseWeight(input) {
+        const value = Number.parseFloat(String(input.value).replace(",", "."));
+        return Number.isFinite(value) ? value : 0;
+    }
+
+    function weightSum() {
+        return Array.from(document.querySelectorAll(".weight-input")).reduce(
+            (acc, input) => acc + parseWeight(input),
+            0
+        );
+    }
+
+    function updateWeightSum() {
+        const sum = weightSum();
+        const el = document.getElementById("weight-sum");
+        el.textContent = `${sum.toFixed(2)}%`;
+        el.classList.toggle("up", Math.abs(sum - 100) < 0.01);
+        el.classList.toggle("down", Math.abs(sum - 100) >= 0.01);
+        document.getElementById("balance-btn").disabled = Math.abs(sum - 100) >= 0.01;
+    }
+
+    function selectedSymbols() {
+        return Array.from(document.querySelectorAll(".liq-check:not(:disabled):checked")).map(
+            (input) => input.value
+        );
+    }
+
+    function updateLiquidateButton() {
+        document.getElementById("liquidate-btn").disabled = selectedSymbols().length === 0;
+    }
+
+    function collectWeights() {
+        const weights = {};
+        document.querySelectorAll(".weight-input").forEach((input) => {
+            weights[input.dataset.symbol] = parseWeight(input);
+        });
+        return weights;
+    }
+
+    function renderBalanceTable() {
+        const tbody = document.querySelector("#balance-table tbody");
+        tbody.innerHTML = "";
+        const pairs = yamlPairs();
+        document.getElementById("balance-empty").hidden = pairs.length > 0;
+        pairs.forEach((pair) => {
+            const holding = holdingFor(pair.operationCode);
+            const qty = holding ? holding.quantity : 0;
+            const usd = holding ? holding.usd_value : 0;
+            const weight = currentWeight(usd);
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>
+                    <strong>${escapeHtml(pair.operationCode)}</strong>
+                    <div class="field-help">${escapeHtml(pair.stockCode)}</div>
+                </td>
+                <td class="num">${formatQty(qty)}</td>
+                <td class="num">${formatUsd(usd)}</td>
+                <td class="num">${weight.toFixed(2)}%</td>
+                <td class="num">
+                    <input
+                        class="weight-input"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        data-symbol="${escapeHtml(pair.operationCode)}"
+                        value="${weight.toFixed(2)}"
+                    />
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+        tbody.querySelectorAll(".weight-input").forEach((input) => {
+            input.addEventListener("input", updateWeightSum);
+        });
+        updateWeightSum();
+    }
+
+    function renderLiquidateList() {
+        const root = document.getElementById("liquidate-list");
+        root.innerHTML = "";
+        yamlPairs().forEach((pair) => {
+            const holding = holdingFor(pair.operationCode);
+            const qty = holding ? holding.quantity : 0;
+            const usd = holding ? holding.usd_value : 0;
+            const sellable = qty > 0 && usd > 0;
+            const label = document.createElement("label");
+            label.className = "liq-row";
+            label.innerHTML = `
+                <input
+                    class="liq-check"
+                    type="checkbox"
+                    value="${escapeHtml(pair.operationCode)}"
+                    ${sellable ? "checked" : "disabled"}
+                />
+                <span>
+                    <strong>${escapeHtml(pair.operationCode)}</strong>
+                    · ${formatQty(qty)} ${escapeHtml(pair.stockCode)}
+                    · ${formatUsd(usd)}
+                </span>
+            `;
+            root.appendChild(label);
+        });
+        root.querySelectorAll(".liq-check").forEach((input) => {
+            input.addEventListener("change", updateLiquidateButton);
+        });
+        updateLiquidateButton();
+    }
+
+    function renderOrders(targetId, orders) {
+        const el = document.getElementById(targetId);
+        if (!orders || !orders.length) {
+            el.hidden = true;
+            el.textContent = "";
+            return;
+        }
+        el.hidden = false;
+        el.innerHTML = orders
+            .map((row) => {
+                const skipped = row.skipped ? " (skip)" : "";
+                const qty = row.quantity ? formatQty(row.quantity) : "0";
+                const notional = row.notional ? formatUsd(row.notional) : formatUsd(0);
+                return `<div>${escapeHtml(row.side)} ${escapeHtml(row.operation_code)} · ${qty} · ${notional}${skipped}${row.reason ? " · " + escapeHtml(row.reason) : ""}</div>`;
+            })
+            .join("");
+    }
+
+    async function readJson(response) {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok && response.status !== 207) {
+            throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+        if (payload.error && response.status >= 400 && response.status !== 207) {
+            throw new Error(payload.error);
+        }
+        return payload;
+    }
+
+    async function loadHold() {
+        const response = await traderbotFetch("/api/portfolio/hold");
+        const payload = await readJson(response);
+        document.getElementById("hold-banner").hidden = !payload.hold;
+    }
+
+    async function loadPortfolio() {
+        showError("");
+        const response = await traderbotFetch("/api/portfolio");
+        const payload = await readJson(response);
+        holdings = (payload.assets || []).filter((row) => !isQuote(row));
+        nav = Number(payload.total_usd || 0);
+        document.getElementById("nav-value").textContent = formatUsd(nav);
+        renderBalanceTable();
+        renderLiquidateList();
+        await loadHold();
+    }
+
+    function closeModal() {
+        pendingAction = null;
+        document.getElementById("confirm-modal").hidden = true;
+        document.getElementById("modal-input").value = "";
+        document.getElementById("modal-ok").disabled = true;
+    }
+
+    function openModal(action) {
+        pendingAction = action;
+        document.getElementById("modal-title").textContent = action.title;
+        document.getElementById("modal-env").textContent =
+            `Ambiente ativo: ${action.environment || ENV_NAME}. Esta ação envia ordens MARKET.`;
+        document.getElementById("modal-word").textContent = action.confirm;
+        document.getElementById("modal-detail").textContent = action.detail;
+        document.getElementById("modal-input").value = "";
+        document.getElementById("modal-ok").disabled = true;
+        document.getElementById("confirm-modal").hidden = false;
+        document.getElementById("modal-input").focus();
+    }
+
+    function orderLines(orders) {
+        return (orders || [])
+            .map((row) => {
+                const skip = row.skipped ? " skip" : "";
+                return `${row.side} ${row.operation_code} ${row.quantity || 0}${skip}`;
+            })
+            .join("\n");
+    }
+
+    async function previewBalance() {
+        showError("");
+        const response = await traderbotFetch("/api/portfolio/rebalance/preview", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ weights: collectWeights() }),
+        });
+        const payload = await readJson(response);
+        renderOrders("balance-preview", payload.orders || payload.sells);
+        return payload;
+    }
+
+    async function previewLiquidate() {
+        showError("");
+        const symbols = selectedSymbols();
+        const response = await traderbotFetch("/api/portfolio/liquidate/preview", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ symbols }),
+        });
+        const payload = await readJson(response);
+        renderOrders("liquidate-preview", payload.sells);
+        return payload;
+    }
+
+    async function runPending() {
+        if (!pendingAction) return;
+        const typed = document.getElementById("modal-input").value.trim();
+        if (typed !== pendingAction.confirm) return;
+        const body = Object.assign({}, pendingAction.body, { confirm: pendingAction.confirm });
+        const response = await traderbotFetch(pendingAction.url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        const payload = await readJson(response);
+        closeModal();
+        if (payload.ok === false) {
+            showError(payload.error || "Ação parcial. Hold permanece até você liberar ou tentar de novo.");
+        }
+        await loadPortfolio();
+    }
+
+    document.getElementById("refresh-btn").addEventListener("click", () => {
+        loadPortfolio().catch((err) => showError(err.message));
+    });
+    document.getElementById("select-all-btn").addEventListener("click", () => {
+        document.querySelectorAll(".liq-check:not(:disabled)").forEach((input) => {
+            input.checked = true;
+        });
+        updateLiquidateButton();
+    });
+    document.getElementById("select-none-btn").addEventListener("click", () => {
+        document.querySelectorAll(".liq-check").forEach((input) => {
+            input.checked = false;
+        });
+        updateLiquidateButton();
+    });
+    document.getElementById("preview-balance-btn").addEventListener("click", () => {
+        previewBalance().catch((err) => showError(err.message));
+    });
+    document.getElementById("preview-liquidate-btn").addEventListener("click", () => {
+        previewLiquidate().catch((err) => showError(err.message));
+    });
+    document.getElementById("balance-btn").addEventListener("click", () => {
+        previewBalance()
+            .then((payload) => {
+                openModal({
+                    title: "Confirmar Balance",
+                    confirm: "BALANCE",
+                    environment: payload.environment,
+                    detail: orderLines(payload.orders),
+                    url: "/api/portfolio/rebalance",
+                    body: { weights: collectWeights() },
+                });
+            })
+            .catch((err) => showError(err.message));
+    });
+    document.getElementById("liquidate-btn").addEventListener("click", () => {
+        previewLiquidate()
+            .then((payload) => {
+                openModal({
+                    title: "Confirmar Liquidate",
+                    confirm: "LIQUIDATE",
+                    environment: payload.environment,
+                    detail: orderLines(payload.sells),
+                    url: "/api/portfolio/liquidate",
+                    body: { symbols: selectedSymbols() },
+                });
+            })
+            .catch((err) => showError(err.message));
+    });
+    document.getElementById("modal-cancel").addEventListener("click", closeModal);
+    document.getElementById("modal-input").addEventListener("input", (event) => {
+        document.getElementById("modal-ok").disabled =
+            !pendingAction || event.target.value.trim() !== pendingAction.confirm;
+    });
+    document.getElementById("modal-ok").addEventListener("click", () => {
+        runPending().catch((err) => {
+            closeModal();
+            showError(err.message);
+        });
+    });
+    document.getElementById("release-hold-btn").addEventListener("click", () => {
+        traderbotFetch("/api/portfolio/hold", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ hold: false }),
+        })
+            .then(readJson)
+            .then(loadHold)
+            .catch((err) => showError(err.message));
+    });
+    document.getElementById("confirm-modal").addEventListener("click", (event) => {
+        if (event.target.id === "confirm-modal") closeModal();
+    });
+
+    loadPortfolio().catch((err) => showError(err.message));
+</script>
+{% endblock %}

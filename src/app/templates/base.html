@@ -38,6 +38,11 @@
                     >Profit</a
                 >
                 <a
+                    href="{{ url_for('routes.balance_page') }}"
+                    class="{{ 'active' if active_page == 'balance' else '' }}"
+                    >Balance</a
+                >
+                <a
                     href="{{ url_for('routes.config_page') }}"
                     class="{{ 'active' if active_page == 'config' else '' }}"
                     >Config</a

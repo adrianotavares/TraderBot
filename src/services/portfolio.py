@@ -39,6 +39,20 @@ def parse_balances(account_data: Optional[dict]) -> dict[str, float]:
     return balances
 
 
+def parse_free_balances(account_data: Optional[dict]) -> dict[str, float]:
+    balances: dict[str, float] = {}
+    if not account_data:
+        return balances
+    for row in account_data.get("balances", []):
+        asset = row.get("asset")
+        if not asset:
+            continue
+        quantity = float(row.get("free", 0) or 0)
+        if quantity:
+            balances[asset] = quantity
+    return balances
+
+
 def _holding_pnl(
     quantity: float, mark_price: float, last_buy_price: float
 ) -> tuple[Optional[float], Optional[float], float]:

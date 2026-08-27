@@ -1244,3 +1244,103 @@ body.page-tracking .toolbar {
         grid-template-rows: minmax(220px, 1.2fr) minmax(160px, 0.8fr);
     }
 }
+
+.balance-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+}
+
+.balance-table th,
+.balance-table td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--md-outline);
+    font-size: 0.9rem;
+}
+
+.balance-table th.num,
+.balance-table td.num {
+    text-align: right;
+}
+
+.balance-table .weight-input {
+    width: 5.5rem;
+    text-align: right;
+}
+
+.table-wrap {
+    overflow-x: auto;
+    margin: 12px 0;
+}
+
+.form-card > .section-title {
+    margin-top: 0;
+}
+
+.form-card + .form-card {
+    margin-top: 20px;
+}
+
+.liquidate-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 8px 0 0;
+}
+
+.liq-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.92rem;
+}
+
+.preview-list {
+    margin-top: 12px;
+    font-size: 0.85rem;
+    color: var(--md-on-surface-variant);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    padding: 16px;
+}
+
+.modal[hidden] {
+    display: none;
+}
+
+.modal-card {
+    background: var(--md-surface-container);
+    color: var(--md-on-surface);
+    border-radius: var(--md-radius);
+    padding: 20px;
+    max-width: 480px;
+    width: 100%;
+}
+
+.modal-detail {
+    background: var(--md-badge-gray);
+    border: 1px solid var(--md-outline);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+    max-height: 180px;
+    overflow: auto;
+}
+
+.icon-btn.danger:not(:disabled) {
+    background: var(--md-badge-down);
+    color: var(--md-badge-down-fg);
+}

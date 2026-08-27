@@ -4,6 +4,7 @@ from services.portfolio import (
     compute_portfolio,
     fetch_portfolio,
     parse_balances,
+    parse_free_balances,
     quote_from_pair,
 )
 
@@ -26,6 +27,19 @@ def test_parse_balances_sums_free_and_locked():
     assert balances["BTC"] == 0.015
     assert "ETH" not in balances
     assert balances["USDT"] == 100.0
+
+
+def test_parse_free_balances_ignores_locked():
+    balances = parse_free_balances(
+        {
+            "balances": [
+                {"asset": "BTC", "free": "0.01", "locked": "0.005"},
+                {"asset": "USDT", "free": "80", "locked": "20"},
+            ]
+        }
+    )
+    assert balances["BTC"] == 0.01
+    assert balances["USDT"] == 80.0
 
 
 def test_compute_portfolio_sums_assets_and_quote_to_usd():

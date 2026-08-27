@@ -570,6 +570,17 @@ class TradingEngine:
             self.bot.time_to_sleep = self.bot.time_to_trade
             return
 
+        if self.state_store.is_action_hold():
+            log_event(
+                logging.INFO,
+                f"Cycle skipped for {self.bot.operation_code}: portfolio action hold",
+                operation_code=self.bot.operation_code,
+                event="cycle_skipped_portfolio_action",
+                reason="action_hold",
+            )
+            self.bot.time_to_sleep = self.bot.time_to_trade
+            return
+
         print("------------------------------------------------")
         print(f'Executado {datetime.now().strftime("(%H:%M:%S) %d-%m-%Y")}\n')
 
