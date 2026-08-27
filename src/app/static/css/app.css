@@ -422,6 +422,11 @@ h1 {
     color: var(--md-info);
 }
 
+.outcome-badge.external {
+    background: var(--md-badge-warn);
+    color: var(--md-badge-warn-fg);
+}
+
 .outcome-asset {
     margin: 0;
     font-size: 1rem;

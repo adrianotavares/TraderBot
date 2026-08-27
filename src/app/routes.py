@@ -67,6 +67,7 @@ from services.outcome_history import (
     kind_hints_from_log,
     match_trades_and_open_lots,
     rebuild_outcomes_from_orders,
+    reconcile_open_lots,
 )
 from services.portfolio import fetch_portfolio
 from services.portfolio_actions import (
@@ -172,8 +173,24 @@ def _spot_client_for_settings():
     return settings, client
 
 
+def _live_portfolio_snapshot(force_refresh: bool = False):
+    """Same snapshot as Tracking. None when Binance/credentials are unavailable."""
+    if force_refresh:
+        _invalidate_portfolio_cache()
+    try:
+        return get_portfolio_snapshot()
+    except Exception:
+        return None
+
+
+def _overlay_profit_nav(board: dict, snapshot: Optional[dict]) -> None:
+    if snapshot and snapshot.get("total_usd") is not None:
+        board["nav_usd"] = round(float(snapshot["total_usd"]), 2)
+
+
 def get_profit_board(force_refresh: bool = False):
     now = time.time()
+    cached_board = None
     with _history_lock:
         cached = _history_cache["data"]
         if (
@@ -181,7 +198,11 @@ def get_profit_board(force_refresh: bool = False):
             and cached is not None
             and now - _history_cache["ts"] < _HISTORY_CACHE_TTL
         ):
-            return cached
+            cached_board = cached
+
+    if cached_board is not None:
+        _overlay_profit_nav(cached_board, _live_portfolio_snapshot())
+        return cached_board
 
     # Sync/rebuild outside the lock so Binance latency does not block other readers.
     store = StateStore()
@@ -224,7 +245,31 @@ def get_profit_board(force_refresh: bool = False):
         stop_loss_pct=stop_loss_pct,
         kind_hints=hints,
     )
-    board = build_outcome_board(closed, open_lots=open_lots)
+    snapshot = _live_portfolio_snapshot(force_refresh=force_refresh)
+    warnings = []
+    if snapshot:
+        open_lots, warnings = reconcile_open_lots(
+            open_lots, snapshot.get("assets") or []
+        )
+    else:
+        warnings.append(
+            {
+                "code": "nav_unavailable",
+                "operation_code": "",
+                "stock_code": "",
+                "message": (
+                    "Saldo live da Binance indisponível; "
+                    "posição aberta ficou só no FIFO."
+                ),
+            }
+        )
+    nav_usd = None if not snapshot else snapshot.get("total_usd")
+    board = build_outcome_board(
+        closed,
+        open_lots=open_lots,
+        nav_usd=nav_usd,
+        warnings=warnings,
+    )
     board["sync"] = sync_info
 
     with _history_lock:

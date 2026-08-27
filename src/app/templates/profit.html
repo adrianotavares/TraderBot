@@ -3,10 +3,17 @@
 {% block content %}
 <h1>Profit</h1>
 <p class="subtitle">
-    Realizado vs posição aberta (BUY/SELL sincronizados da Binance)
+    Fechamentos pelos BUY/SELL sincronizados. Posição aberta e saldo total
+    seguem o saldo live da Binance.
 </p>
 
+<div id="profit-warnings" class="impact-banner warn" hidden></div>
+
 <div class="portfolio-summary" id="profit-summary">
+    <div class="portfolio-metric">
+        <span class="portfolio-label">Saldo total</span>
+        <span class="portfolio-value" id="profit-nav">—</span>
+    </div>
     <div class="portfolio-metric">
         <span class="portfolio-label">Custo realizado</span>
         <span class="portfolio-value" id="profit-cost">—</span>
@@ -16,7 +23,7 @@
         <span class="portfolio-value" id="profit-open-cost">—</span>
     </div>
     <div class="portfolio-metric">
-        <span class="portfolio-label">Valor total agregado</span>
+        <span class="portfolio-label">Receita realizada</span>
         <span class="portfolio-value" id="profit-total">—</span>
     </div>
     <div class="portfolio-metric">
@@ -41,7 +48,7 @@
 <h2 class="section-title">Posição aberta</h2>
 <div id="open-list" class="outcome-list"></div>
 <div id="open-empty" class="empty" hidden>
-    Nenhuma posição aberta na janela atual.
+    Nenhuma posição aberta no saldo live.
 </div>
 {% endblock %}
 
@@ -87,14 +94,16 @@
         return `${sign}${Number(value).toFixed(2)}%`;
     }
 
-    function kindLabel(kind) {
+    function kindLabel(kind, source) {
+        if (source === "external") return "Externo";
         if (kind === "stop_loss") return "Stop loss";
         if (kind === "take_profit") return "Take profit";
         if (kind === "open") return "Aberto";
         return "Venda";
     }
 
-    function kindClassName(kind) {
+    function kindClassName(kind, source) {
+        if (source === "external") return "external";
         if (kind === "stop_loss") return "stop-loss";
         if (kind === "take_profit") return "take-profit";
         if (kind === "open") return "open";
@@ -127,6 +136,20 @@
         pnlEl.textContent = text;
         if (pnlUsd > 0) pnlEl.classList.add("up");
         if (pnlUsd < 0) pnlEl.classList.add("down");
+    }
+
+    function renderWarnings(warnings) {
+        const banner = document.getElementById("profit-warnings");
+        const messages = (warnings || [])
+            .map((row) => row && row.message)
+            .filter(Boolean);
+        if (!messages.length) {
+            banner.hidden = true;
+            banner.textContent = "";
+            return;
+        }
+        banner.hidden = false;
+        banner.textContent = messages.join("\n");
     }
 
     function renderOperations(operations) {
@@ -184,6 +207,7 @@
         empty.hidden = true;
         list.innerHTML = positions
             .map((row) => {
+                const source = row.source || "orders";
                 const meta = [
                     row.operation_code || "",
                     formatOccurredAt(row.occurred_at),
@@ -191,14 +215,16 @@
                     row.buy_price != null
                         ? `compra ${formatUsd(row.buy_price, false)}`
                         : "",
+                    source === "external" ? "não rastreado nos BUY" : "",
                 ]
                     .filter(Boolean)
                     .join(" · ");
                 return `
                     <article class="outcome-card">
-                        <span class="outcome-badge open">${escapeHtml(
-                            kindLabel("open")
-                        )}</span>
+                        <span class="outcome-badge ${kindClassName(
+                            "open",
+                            source
+                        )}">${escapeHtml(kindLabel("open", source))}</span>
                         <div>
                             <p class="outcome-asset">${escapeHtml(row.stock_code)}</p>
                             <p class="outcome-meta">${escapeHtml(meta)}</p>
@@ -214,6 +240,7 @@
     }
 
     async function loadBoard(forceRefresh) {
+        const navEl = document.getElementById("profit-nav");
         const costEl = document.getElementById("profit-cost");
         const openCostEl = document.getElementById("profit-open-cost");
         const totalEl = document.getElementById("profit-total");
@@ -222,25 +249,38 @@
         const empty = document.getElementById("empty-state");
         const openList = document.getElementById("open-list");
         const openEmpty = document.getElementById("open-empty");
+        const banner = document.getElementById("profit-warnings");
         try {
             const url = forceRefresh ? "/api/profit?refresh=1" : "/api/profit";
             const response = await traderbotFetch(url);
             const data = await response.json();
-            if (!response.ok || data.total_usd == null) {
+            if (!response.ok) {
                 throw new Error(data.error || "bad status");
+            }
+            if (data.nav_usd == null) {
+                navEl.textContent = "—";
+            } else {
+                navEl.textContent = formatUsd(data.nav_usd, false);
             }
             costEl.textContent = formatUsd(data.total_cost_usd ?? 0, false);
             openCostEl.textContent = formatUsd(data.open_cost_usd ?? 0, false);
-            totalEl.textContent = formatUsd(data.total_usd, false);
+            totalEl.textContent = formatUsd(
+                data.realized_proceeds_usd ?? data.total_usd ?? 0,
+                false
+            );
             renderPnl(data.total_pnl_usd, data.total_pnl_pct);
+            renderWarnings(data.warnings || []);
             renderOperations(data.operations || []);
             renderOpenPositions(data.open_positions || []);
         } catch (err) {
             costEl.textContent = "Indisponível";
             openCostEl.textContent = "Indisponível";
             totalEl.textContent = "Indisponível";
+            navEl.textContent = "Indisponível";
             pnlEl.classList.remove("up", "down");
             pnlEl.textContent = "Indisponível";
+            banner.hidden = true;
+            banner.textContent = "";
             list.innerHTML = "";
             openList.innerHTML = "";
             empty.hidden = false;
