@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="pt">
+<html lang="pt" data-theme="light">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>{% block title %}TraderBot{% endblock %}</title>
+        <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link
@@ -11,7 +12,7 @@
             rel="stylesheet"
         />
         <link
-            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0..1,0"
             rel="stylesheet"
         />
         <link
@@ -43,6 +44,7 @@
                 >
             </nav>
             <div class="app-bar-end">
+                {% include "_theme_switch.html" %}
                 <span
                     class="env-badge {{ environment }}"
                     title="Ambiente definido em {{ environment_source }}"

@@ -10,16 +10,105 @@
 
     var LWC = window.LightweightCharts;
     var TZ = "America/Sao_Paulo";
+    var liveEntries = [];
 
-    // Mirrors the --md-* custom properties in app.css.
-    var COLORS = {
-        up: "#1b7f3a",
-        down: "#b3261e",
-        info: "#1565c0",
-        entry: "#5c5c57",
-        grid: "#eceff1",
-        text: "#5c5c57",
-    };
+    function cssVar(name, fallback) {
+        var value = getComputedStyle(document.documentElement)
+            .getPropertyValue(name)
+            .trim();
+        return value || fallback;
+    }
+
+    function hexToRgba(hex, alpha) {
+        var raw = (hex || "").replace("#", "").trim();
+        if (raw.length === 3) {
+            raw = raw
+                .split("")
+                .map(function (ch) {
+                    return ch + ch;
+                })
+                .join("");
+        }
+        var n = parseInt(raw, 16);
+        if (!raw || raw.length !== 6 || !isFinite(n)) {
+            return "rgba(21, 101, 192, " + alpha + ")";
+        }
+        return (
+            "rgba(" +
+            ((n >> 16) & 255) +
+            ", " +
+            ((n >> 8) & 255) +
+            ", " +
+            (n & 255) +
+            ", " +
+            alpha +
+            ")"
+        );
+    }
+
+    // Mirrors the --md-* custom properties in app.css (Lights / Dark).
+    function readColors() {
+        return {
+            up: cssVar("--md-up", "#1b7f3a"),
+            down: cssVar("--md-down", "#b3261e"),
+            info: cssVar("--md-info", "#1565c0"),
+            entry: cssVar("--md-on-surface-variant", "#5c5c57"),
+            grid: cssVar("--md-chart-grid", "#eceff1"),
+            text: cssVar("--md-on-surface-variant", "#5c5c57"),
+        };
+    }
+
+    var COLORS = readColors();
+
+    function chartLayoutOptions() {
+        return {
+            layout: {
+                background: { color: "transparent" },
+                textColor: COLORS.text,
+                fontFamily: "Roboto, system-ui, sans-serif",
+                fontSize: 11,
+                attributionLogo: false,
+            },
+            grid: {
+                vertLines: { color: COLORS.grid },
+                horzLines: { color: COLORS.grid },
+            },
+        };
+    }
+
+    function applyThemeToHandle(handle) {
+        handle.chart.applyOptions(chartLayoutOptions());
+        if (handle.candles) {
+            handle.candles.applyOptions({
+                upColor: COLORS.up,
+                downColor: COLORS.down,
+                borderUpColor: COLORS.up,
+                borderDownColor: COLORS.down,
+                wickUpColor: COLORS.up,
+                wickDownColor: COLORS.down,
+            });
+        }
+        if (handle.trailing) {
+            handle.trailing.applyOptions({ color: COLORS.info });
+        }
+        if (handle.equity) {
+            handle.equity.applyOptions({
+                lineColor: COLORS.info,
+                topColor: hexToRgba(COLORS.info, 0.35),
+                bottomColor: hexToRgba(COLORS.info, 0.05),
+            });
+        }
+        handle.priceLines.forEach(function (item) {
+            item.line.applyOptions({ color: colorForRole(item.role) });
+        });
+    }
+
+    function applyTheme() {
+        COLORS = readColors();
+        liveEntries.forEach(function (entry) {
+            applyThemeToHandle(entry.handle);
+        });
+    }
 
     var REGIME_COLORS = {
         TREND: "rgba(27, 127, 58, 0.85)",
@@ -141,35 +230,30 @@
     }
 
     function buildChart(canvas) {
-        var chart = LWC.createChart(canvas, {
-            autoSize: true,
-            layout: {
-                background: { color: "transparent" },
-                textColor: COLORS.text,
-                fontFamily: "Roboto, system-ui, sans-serif",
-                fontSize: 11,
-                attributionLogo: false,
-            },
-            grid: {
-                vertLines: { color: COLORS.grid },
-                horzLines: { color: COLORS.grid },
-            },
-            rightPriceScale: { borderVisible: false },
-            timeScale: {
-                borderVisible: false,
-                timeVisible: true,
-                secondsVisible: false,
-                tickMarkFormatter: tickMark,
-            },
-            crosshair: { mode: LWC.CrosshairMode.Normal },
-            localization: {
-                locale: "pt-BR",
-                timeFormatter: function (seconds) {
-                    return fullFormat.format(toDate(seconds));
+        var chart = LWC.createChart(
+            canvas,
+            Object.assign(
+                {
+                    autoSize: true,
+                    rightPriceScale: { borderVisible: false },
+                    timeScale: {
+                        borderVisible: false,
+                        timeVisible: true,
+                        secondsVisible: false,
+                        tickMarkFormatter: tickMark,
+                    },
+                    crosshair: { mode: LWC.CrosshairMode.Normal },
+                    localization: {
+                        locale: "pt-BR",
+                        timeFormatter: function (seconds) {
+                            return fullFormat.format(toDate(seconds));
+                        },
+                    },
+                    handleScale: { axisPressedMouseMove: false },
                 },
-            },
-            handleScale: { axisPressedMouseMove: false },
-        });
+                chartLayoutOptions()
+            )
+        );
 
         // One area series per regime, on an overlay price scale that is
         // invisible by default. A histogram would leave a gap between bars and
@@ -235,40 +319,35 @@
     }
 
     function buildEquityChart(canvas) {
-        var chart = LWC.createChart(canvas, {
-            autoSize: true,
-            layout: {
-                background: { color: "transparent" },
-                textColor: COLORS.text,
-                fontFamily: "Roboto, system-ui, sans-serif",
-                fontSize: 11,
-                attributionLogo: false,
-            },
-            grid: {
-                vertLines: { color: COLORS.grid },
-                horzLines: { color: COLORS.grid },
-            },
-            rightPriceScale: { borderVisible: false },
-            timeScale: {
-                borderVisible: false,
-                timeVisible: true,
-                secondsVisible: false,
-                tickMarkFormatter: tickMark,
-            },
-            crosshair: { mode: LWC.CrosshairMode.Normal },
-            localization: {
-                locale: "pt-BR",
-                timeFormatter: function (seconds) {
-                    return fullFormat.format(toDate(seconds));
+        var chart = LWC.createChart(
+            canvas,
+            Object.assign(
+                {
+                    autoSize: true,
+                    rightPriceScale: { borderVisible: false },
+                    timeScale: {
+                        borderVisible: false,
+                        timeVisible: true,
+                        secondsVisible: false,
+                        tickMarkFormatter: tickMark,
+                    },
+                    crosshair: { mode: LWC.CrosshairMode.Normal },
+                    localization: {
+                        locale: "pt-BR",
+                        timeFormatter: function (seconds) {
+                            return fullFormat.format(toDate(seconds));
+                        },
+                    },
+                    handleScale: { axisPressedMouseMove: false },
                 },
-            },
-            handleScale: { axisPressedMouseMove: false },
-        });
+                chartLayoutOptions()
+            )
+        );
 
         var equity = chart.addSeries(LWC.AreaSeries, {
             lineColor: COLORS.info,
-            topColor: "rgba(21, 101, 192, 0.35)",
-            bottomColor: "rgba(21, 101, 192, 0.05)",
+            topColor: hexToRgba(COLORS.info, 0.35),
+            bottomColor: hexToRgba(COLORS.info, 0.05),
             lineWidth: 2,
             lastValueVisible: false,
             priceLineVisible: false,
@@ -321,23 +400,30 @@
 
     function clearPriceLines(handle) {
         var series = priceSeries(handle);
-        handle.priceLines.forEach(function (line) {
-            series.removePriceLine(line);
+        handle.priceLines.forEach(function (item) {
+            series.removePriceLine(item.line);
         });
         handle.priceLines = [];
     }
 
-    function addPriceLine(handle, price, color, title, style) {
-        handle.priceLines.push(
-            priceSeries(handle).createPriceLine({
+    function colorForRole(role) {
+        if (role === "tp") return COLORS.up;
+        if (role === "sl") return COLORS.down;
+        return COLORS.entry;
+    }
+
+    function addPriceLine(handle, price, role, title, style) {
+        handle.priceLines.push({
+            role: role,
+            line: priceSeries(handle).createPriceLine({
                 price: price,
-                color: color,
+                color: colorForRole(role),
                 lineWidth: 1,
                 lineStyle: style,
                 axisLabelVisible: false,
                 title: title,
-            })
-        );
+            }),
+        });
     }
 
     /** Whitespace between runs breaks the fill, so each run is its own block. */
@@ -376,7 +462,7 @@
             addPriceLine(
                 handle,
                 levels.take_profit.price,
-                COLORS.up,
+                "tp",
                 "TP " + formatPct(levels.take_profit.pct),
                 LWC.LineStyle.Dashed
             );
@@ -392,7 +478,7 @@
         addPriceLine(
             handle,
             levels.entry,
-            COLORS.entry,
+            "entry",
             "Entrada",
             LWC.LineStyle.Solid
         );
@@ -404,7 +490,7 @@
             addPriceLine(
                 handle,
                 levels.stop_loss.price,
-                COLORS.down,
+                "sl",
                 "SL -" + levels.stop_loss.pct.toFixed(2) + "%",
                 LWC.LineStyle.Dashed
             );
@@ -573,6 +659,7 @@
                     : buildChart(card.canvas);
             handle.windowSeconds = options && options.windowSeconds;
             var entry = { card: card, handle: handle };
+            liveEntries.push(entry);
             update(handle, card, asset);
             return entry;
         },
@@ -589,10 +676,16 @@
         },
 
         dispose: function (entry) {
+            var idx = liveEntries.indexOf(entry);
+            if (idx >= 0) {
+                liveEntries.splice(idx, 1);
+            }
             entry.handle.chart.remove();
             if (entry.card.root.parentNode) {
                 entry.card.root.parentNode.removeChild(entry.card.root);
             }
         },
     };
+
+    window.addEventListener("traderbot-theme", applyTheme);
 })();

@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="pt">
+<html lang="pt" data-theme="light">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Entrar - TraderBot</title>
+        <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link
@@ -11,7 +12,7 @@
             rel="stylesheet"
         />
         <link
-            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0..1,0"
             rel="stylesheet"
         />
         <link
@@ -22,9 +23,12 @@
     <body class="login-body">
         <main class="login-main">
             <div class="form-card login-card">
-                <div class="brand login-brand">
-                    <span class="material-symbols-outlined">candlestick_chart</span>
-                    TraderBot
+                <div class="login-card-top">
+                    <div class="brand login-brand">
+                        <span class="material-symbols-outlined">candlestick_chart</span>
+                        TraderBot
+                    </div>
+                    {% include "_theme_switch.html" %}
                 </div>
 
                 {% if error %}

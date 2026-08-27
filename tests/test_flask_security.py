@@ -121,6 +121,30 @@ def test_static_assets_are_public_so_login_page_is_styled(password_env):
     response = client.get("/static/css/app.css")
     assert response.status_code == 200
     assert b".login-card" in response.data
+    assert b".theme-switch" in response.data
+    assert b'[data-theme="dark"]' in response.data
+    js = client.get("/static/js/theme.js")
+    assert js.status_code == 200
+    assert b"traderbot-theme" in js.data
+
+
+def test_theme_switcher_is_on_login_and_pages(password_env):
+    client = app.test_client()
+    login = client.get("/login")
+    assert login.status_code == 200
+    assert b'data-theme-option="light"' in login.data
+    assert b'data-theme-option="dark"' in login.data
+    assert b"light_mode" in login.data
+    assert b"dark_mode" in login.data
+    _login(client)
+    tracking = client.get("/")
+    assert tracking.status_code == 200
+    assert b'data-theme-option="dark"' in tracking.data
+    assert b"light_mode" in tracking.data
+    assert b"theme-label" not in tracking.data
+    profit = client.get("/profit")
+    assert profit.status_code == 200
+    assert b'data-theme-option="light"' in profit.data
 
 
 def test_login_success_grants_access(password_env):
