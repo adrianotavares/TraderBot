@@ -1,30 +1,40 @@
-environment: mainnet
+environment: testnet
 thread_lock: true
 strategy:
-  main: atr_trend
+  main: vwap_scalp
   main_args:
-    atr_multiplier: 2.5
+    session_start_utc: '12:00'
+    session_end_utc: '20:00'
+    vwap_atr_k: 1.0
     atr_period: 14
-    trend_sma_period: 200
+    adx_period: 14
+    adx_max: 22.0
+    rsi_period: 14
+    rsi_buy: 30.0
+    rsi_exit: 55.0
+    volume_sma: 20
+    volume_mult: 1.2
+    fee_round_trip_pct: 0.15
+    min_edge_multiple: 3.0
   fallback: moving_average
   fallback_args:
     fast_window: 21
     slow_window: 55
-  fallback_enabled: true
+  fallback_enabled: false
 risk:
   acceptable_loss_pct: 1.5
   stop_loss_pct: 2.0
   take_profit:
   - at: 7.0
     amount: 100.0
-  max_daily_loss_usdt: 50.0
+  max_daily_loss_usdt: 20.0
   max_trades_per_day: 5
   max_open_orders: 3
   max_grid_trades_per_day: 20
 timing:
-  candle_period: 4h
-  tempo_entre_trades: 300
-  delay_entre_ordens: 3600
+  candle_period: 5m
+  tempo_entre_trades: 60
+  delay_entre_ordens: 60
 assets:
 - stock_code: BTC
   operation_code: BTCUSDT
@@ -46,11 +56,6 @@ assets:
   traded_quantity: 0.0
   traded_percentage: 10.0
   breakout_price: 1.5
-- stock_code: LINK
-  operation_code: LINKUSDT
-  traded_quantity: 0.0
-  traded_percentage: 10.0
-  breakout_price: 12.5
 operation:
   cancel_orders_on_shutdown: false
   circuit_breaker_errors: 3
@@ -59,7 +64,7 @@ alerts:
   enabled: false
   webhook_url: ''
 regime:
-  enabled: true
+  enabled: false
   adx_period: 14
   adx_lateral_threshold: 20.0
   adx_trend_threshold: 25.0
@@ -76,7 +81,7 @@ regime:
   min_candles: 60
   action_in_lateral: grid
 grid:
-  enabled: true
+  enabled: false
   levels: 6
   capital_pct: 30.0
   min_channel_width_pct: 1.5
@@ -84,7 +89,7 @@ grid:
   min_profit_per_level_pct: 0.35
   max_open_orders: 10
 breakout:
-  enabled: true
+  enabled: false
   adx_period: 14
   adx_min: 25.0
   adx_rising_bars: 2

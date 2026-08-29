@@ -683,6 +683,43 @@ def api_portfolio_hold():
     return jsonify({"hold": False})
 
 
+@routes.route("/api/cycles/control", methods=["GET"])
+def api_cycles_control_status():
+    store = StateStore()
+    return jsonify(
+        {
+            "operator_hold": store.is_operator_hold(),
+            "action_hold": store.is_action_hold(),
+        }
+    )
+
+
+@routes.route("/api/cycles/control", methods=["POST"])
+def api_cycles_control():
+    payload = request.get_json(silent=True) or {}
+    if payload.get("hold") not in (True, False):
+        return jsonify(
+            {
+                "error": "Use hold=true para pausar entradas ou hold=false para retomar"
+            }
+        ), 400
+    store = StateStore()
+    held = bool(payload["hold"])
+    store.set_operator_hold(held)
+    log_event(
+        logging.WARNING,
+        "Dashboard set operator hold" if held else "Dashboard cleared operator hold",
+        event="operator_hold_set" if held else "operator_hold_cleared",
+        hold=held,
+    )
+    return jsonify(
+        {
+            "operator_hold": store.is_operator_hold(),
+            "action_hold": store.is_action_hold(),
+        }
+    )
+
+
 @routes.route("/api/portfolio/rebalance/preview", methods=["POST"])
 def api_rebalance_preview():
     payload = request.get_json(silent=True) or {}
@@ -1005,6 +1042,18 @@ def _cycle_heartbeats_payload(settings=None) -> list[dict]:
     return payload
 
 
+def _hold_flags() -> dict:
+    try:
+        store = StateStore()
+        return {
+            "operator_hold": store.is_operator_hold(),
+            "action_hold": store.is_action_hold(),
+        }
+    except Exception:
+        logging.exception("Failed to load hold flags")
+        return {"operator_hold": False, "action_hold": False}
+
+
 @routes.route("/api/status", methods=["GET"])
 def api_status():
     try:
@@ -1029,6 +1078,7 @@ def api_status():
                 "backups": len(list_config_backups()),
                 "server_time": datetime.now(timezone.utc).isoformat(),
                 "cycles": _cycle_heartbeats_payload(settings),
+                **_hold_flags(),
             }
         )
     except Exception as e:

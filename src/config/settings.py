@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from Models.StockStartModel import StockStartModel
-from strategies.registry import list_strategies, resolve_strategy
+from strategies.registry import all_strategy_default_args, list_strategies, resolve_strategy
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "trading.yaml"
@@ -75,9 +75,18 @@ class AssetConfig(BaseModel):
 
 
 class StrategyConfig(BaseModel):
-    main: str = Field(description="Estratégia principal")
+    main: str = Field(
+        description=(
+            "Estratégia principal (chave do registry). Trocar exige restart do bot. "
+            "No formulário, os args padrão da estratégia escolhida preenchem main_args."
+        )
+    )
     main_args: Dict[str, Any] = Field(
-        default_factory=dict, description="Parâmetros da estratégia principal"
+        default_factory=dict,
+        description=(
+            "Parâmetros da estratégia principal. Cada chave do registry tem defaults "
+            "próprios (ex.: vwap_scalp usa sessão UTC, ATR, ADX, RSI e hurdle de taxa)."
+        ),
     )
     fallback: str = Field(
         default="moving_average",
@@ -754,5 +763,6 @@ def config_schema() -> dict:
             "title": "Realização de lucro",
             "fields": _model_fields(TakeProfitLevel, "risk.take_profit"),
         },
+        "strategy_defaults": all_strategy_default_args(),
         "sensitive_fields": sorted(SENSITIVE_CONFIG_FIELDS),
     }

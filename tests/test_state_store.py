@@ -108,3 +108,13 @@ def test_action_hold_roundtrip(tmp_path):
     store.set_action_hold(False)
     assert store.is_action_hold() is False
 
+
+def test_operator_hold_roundtrip(tmp_path):
+    store = StateStore(tmp_path / "test.db")
+    assert store.is_operator_hold() is False
+    store.set_operator_hold(True)
+    assert store.is_operator_hold() is True
+    assert store.is_action_hold() is False
+    store.set_operator_hold(False)
+    assert store.is_operator_hold() is False
+
