@@ -513,6 +513,46 @@
         holder.appendChild(banner);
     }
 
+    function formatStatusCycle(status) {
+        const configured = new Set(
+            (baseline && baseline.assets ? baseline.assets : [])
+                .map((row) => row.operation_code)
+                .filter(Boolean)
+        );
+        const cycles = (status.cycles || []).filter((row) => {
+            if (!configured.size) return true;
+            return configured.has(row.operation_code);
+        });
+        if (!status.bot || !status.bot.running) {
+            return ["Próximo ciclo", "bot parado", "down"];
+        }
+        const running = cycles.find((row) => row.phase === "running");
+        if (running) {
+            return ["Próximo ciclo", `${running.operation_code} executando`, ""];
+        }
+        const next = cycles.slice().sort((a, b) => {
+            const left = Date.parse(a.next_cycle_at || "") || Infinity;
+            const right = Date.parse(b.next_cycle_at || "") || Infinity;
+            return left - right;
+        })[0];
+        if (!next || !next.next_cycle_at) {
+            return ["Próximo ciclo", "aguardando primeiro ciclo", ""];
+        }
+        const remaining = Date.parse(next.next_cycle_at) - Date.now();
+        if (!Number.isFinite(remaining)) {
+            return ["Próximo ciclo", next.operation_code, ""];
+        }
+        if (remaining <= 0) {
+            return ["Próximo ciclo", `${next.operation_code} na fila`, ""];
+        }
+        const total = Math.ceil(remaining / 1000);
+        const minutes = Math.floor(total / 60);
+        const seconds = total % 60;
+        const clock =
+            String(minutes) + ":" + String(seconds).padStart(2, "0");
+        return ["Próximo ciclo", `${next.operation_code} em ${clock}`, ""];
+    }
+
     function renderStatus(status) {
         const panel = document.getElementById("status-panel");
         panel.innerHTML = "";
@@ -540,6 +580,8 @@
             const fields = status.events.last_reload.fields || [];
             items.push(["Último reload do bot", fields.join(", ") || "-", ""]);
         }
+        const cycleHint = formatStatusCycle(status);
+        if (cycleHint) items.push(cycleHint);
 
         items.forEach(([label, value, tone]) => {
             const cell = document.createElement("div");

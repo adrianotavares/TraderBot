@@ -67,6 +67,50 @@ def test_api_logs_requires_token_when_configured(tmp_path, monkeypatch):
     assert html.status_code == 200
 
 
+def test_api_logs_hides_assets_removed_from_yaml(tmp_path, monkeypatch):
+    import routes
+
+    log_file = tmp_path / "trading_bot.json.log"
+    log_file.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "message": "Ciclo BTCUSDT: Manter posição",
+                        "event": "cycle_summary",
+                        "operation_code": "BTCUSDT",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "message": "Ciclo LINKUSDT: Regime pause",
+                        "event": "cycle_summary",
+                        "operation_code": "LINKUSDT",
+                        "stock_code": "LINK",
+                    }
+                ),
+                json.dumps({"message": "Config reloaded", "event": "config_reloaded"}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("modules.logging_setup.LOG_JSON_FILE", str(log_file))
+    monkeypatch.setattr(
+        routes,
+        "_configured_operation_codes",
+        lambda settings=None: {"BTCUSDT", "ETHUSDT"},
+    )
+
+    client = app.test_client()
+    logs = client.get("/api/logs").get_json()["logs"]
+    assert [entry["message"] for entry in logs] == [
+        "Config reloaded",
+        "Ciclo BTCUSDT: Manter posição",
+    ]
+    assert client.get("/api/logs?operation_code=LINKUSDT").get_json()["logs"] == []
+
+
 def test_api_logs_filters_by_operation_code(tmp_path, monkeypatch):
     log_file = tmp_path / "trading_bot.json.log"
     log_file.write_text(

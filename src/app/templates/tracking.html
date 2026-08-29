@@ -18,6 +18,10 @@
             <span class="portfolio-label">P&amp;L total</span>
             <span class="portfolio-value" id="portfolio-pnl">—</span>
         </div>
+        <div class="portfolio-metric cycle-metric">
+            <span class="portfolio-label" id="cycle-label">Próximo ciclo</span>
+            <span class="portfolio-value" id="cycle-value">—</span>
+        </div>
     </div>
 </div>
 
@@ -65,8 +69,21 @@
 <script src="{{ url_for('static', filename='js/tracking_chart.js') }}"></script>
 <script>
     const ASSETS = {{ config.stocks_traded_list | tojson }};
+    const CONFIGURED_OPS = new Set(
+        ASSETS.map((asset) => asset.operationCode).filter(Boolean)
+    );
     const CANDLE_PERIOD = {{ config.CANDLE_PERIOD | tojson }};
     const REFRESH_MS = 8000;
+    const CYCLE_TICK_MS = 1000;
+    const CYCLE_STALE_MS = 90 * 1000;
+    const CYCLE_REASON_LABELS = {
+        interval: "Próximo ciclo",
+        delay_after_order: "Após ordem",
+        circuit_breaker: "Circuit breaker",
+        error: "Após erro",
+        hold: "Ação de portfólio",
+    };
+    let cycleSnapshot = { botRunning: false, serverOffsetMs: 0, cycles: [] };
     // A 4h candle barely moves in a minute, and each refresh costs one klines
     // call per asset against the same rate limit the bot uses.
     const CHART_REFRESH_MS = 60000;
@@ -203,6 +220,7 @@
                 resetCharts();
                 loadLogs();
                 loadCharts();
+                renderCycleCountdown();
             };
         });
     }
@@ -408,7 +426,11 @@
                 throw new Error("bad status");
             }
             const data = await response.json();
-            renderLogs(data.logs || []);
+            renderLogs(
+                (data.logs || []).filter((entry) =>
+                    isConfiguredOperation(entry.operation_code)
+                )
+            );
         } catch (err) {
             list.innerHTML = "";
             empty.hidden = false;
@@ -425,6 +447,124 @@
             return `+${formatted}`;
         }
         return formatted;
+    }
+
+    function cycleNowMs() {
+        return Date.now() + cycleSnapshot.serverOffsetMs;
+    }
+
+    function cycleAssetLabel(code) {
+        return String(code || "").replace(/USDT$/i, "");
+    }
+
+    function isConfiguredOperation(code) {
+        if (!code) return true;
+        return CONFIGURED_OPS.has(code);
+    }
+
+    function configuredCycles(cycles) {
+        return (cycles || []).filter((row) =>
+            isConfiguredOperation(row.operation_code)
+        );
+    }
+
+    function pickCycle(cycles, selected) {
+        const live = configuredCycles(cycles);
+        if (!live.length) return null;
+        if (selected) {
+            return live.find((row) => row.operation_code === selected) || null;
+        }
+        const running = live.find((row) => row.phase === "running");
+        if (running) return running;
+        return live.slice().sort((a, b) => {
+            const left = Date.parse(a.next_cycle_at || "") || Infinity;
+            const right = Date.parse(b.next_cycle_at || "") || Infinity;
+            return left - right;
+        })[0];
+    }
+
+    function formatRemaining(ms) {
+        const total = Math.max(0, Math.ceil(ms / 1000));
+        const hours = Math.floor(total / 3600);
+        const minutes = Math.floor((total % 3600) / 60);
+        const seconds = total % 60;
+        const clock =
+            String(minutes).padStart(hours ? 2 : 1, "0") +
+            ":" +
+            String(seconds).padStart(2, "0");
+        if (hours) return `${hours}h ${clock}`;
+        return clock;
+    }
+
+    function renderCycleCountdown() {
+        const valueEl = document.getElementById("cycle-value");
+        const labelEl = document.getElementById("cycle-label");
+        if (!valueEl || !labelEl) return;
+        valueEl.classList.remove("up", "down", "warn", "info");
+        const cycle = pickCycle(cycleSnapshot.cycles, selectedOperation);
+        const suffix =
+            !selectedOperation && cycle && cycle.operation_code
+                ? ` · ${cycleAssetLabel(cycle.operation_code)}`
+                : "";
+        if (!cycleSnapshot.botRunning) {
+            labelEl.textContent = "Ciclo";
+            valueEl.textContent = "parado";
+            valueEl.classList.add("down");
+            return;
+        }
+        if (!cycle) {
+            labelEl.textContent = "Próximo ciclo";
+            valueEl.textContent = "aguardando";
+            return;
+        }
+        if (cycle.phase === "running") {
+            labelEl.textContent = "Ciclo" + suffix;
+            valueEl.textContent = "executando";
+            valueEl.classList.add("info");
+            return;
+        }
+        const nextMs = Date.parse(cycle.next_cycle_at || "");
+        const remaining = Number.isFinite(nextMs) ? nextMs - cycleNowMs() : NaN;
+        const reason =
+            CYCLE_REASON_LABELS[cycle.sleep_reason] || "Próximo ciclo";
+        if (!Number.isFinite(remaining)) {
+            labelEl.textContent = reason + suffix;
+            valueEl.textContent = "—";
+            return;
+        }
+        if (remaining > 0) {
+            labelEl.textContent = reason + suffix;
+            valueEl.textContent = formatRemaining(remaining);
+            if (remaining < 15000) valueEl.classList.add("info");
+            return;
+        }
+        if (-remaining < CYCLE_STALE_MS) {
+            labelEl.textContent = "Ciclo" + suffix;
+            valueEl.textContent = "na fila";
+            valueEl.classList.add("info");
+            return;
+        }
+        labelEl.textContent = "Ciclo" + suffix;
+        valueEl.textContent = "atrasado";
+        valueEl.classList.add("warn");
+    }
+
+    async function loadCycleStatus() {
+        try {
+            const response = await traderbotFetch("/api/status");
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "bad status");
+            const serverMs = Date.parse(data.server_time || "");
+            cycleSnapshot.serverOffsetMs = Number.isFinite(serverMs)
+                ? serverMs - Date.now()
+                : 0;
+            cycleSnapshot.botRunning = !!(data.bot && data.bot.running);
+            cycleSnapshot.cycles = configuredCycles(data.cycles || []);
+        } catch (err) {
+            cycleSnapshot.botRunning = false;
+            cycleSnapshot.cycles = [];
+        }
+        renderCycleCountdown();
     }
 
     function renderPnl(pnlUsd, pnlPct) {
@@ -470,7 +610,7 @@
     }
 
     async function refreshAll() {
-        await Promise.all([loadLogs(), loadPortfolio()]);
+        await Promise.all([loadLogs(), loadPortfolio(), loadCycleStatus()]);
     }
 
     document.getElementById("refresh-btn").onclick = () =>
@@ -497,5 +637,9 @@
         if (document.hidden) return;
         loadCharts();
     }, CHART_REFRESH_MS);
+    setInterval(() => {
+        if (document.hidden) return;
+        renderCycleCountdown();
+    }, CYCLE_TICK_MS);
 </script>
 {% endblock %}

@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Iterable
 from logging.handlers import RotatingFileHandler
 
 LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
@@ -49,6 +50,7 @@ def _redact_secrets(entry: dict) -> dict:
 def read_structured_logs(
     limit: int = 200,
     operation_code: str | None = None,
+    operation_codes: Iterable[str] | None = None,
     stock_code: str | None = None,
     event: str | None = None,
     path: str | None = None,
@@ -86,6 +88,11 @@ def read_structured_logs(
             continue
         if operation_code and entry.get("operation_code") != operation_code:
             continue
+        if operation_codes is not None:
+            allowed = set(operation_codes)
+            code = entry.get("operation_code")
+            if code and code not in allowed:
+                continue
         if stock_code and entry.get("stock_code") != stock_code:
             continue
         if event and entry.get("event") != event:
