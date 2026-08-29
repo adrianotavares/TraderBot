@@ -9,6 +9,7 @@ from typing import Optional
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "traderbot.db"
 META_ACTION_HOLD = "action_hold"
+META_OPERATOR_HOLD = "operator_hold"
 
 
 @dataclass
@@ -319,6 +320,12 @@ class StateStore:
 
     def set_action_hold(self, held: bool) -> None:
         self.set_meta(META_ACTION_HOLD, "1" if held else "0")
+
+    def is_operator_hold(self) -> bool:
+        return self.get_meta(META_OPERATOR_HOLD) == "1"
+
+    def set_operator_hold(self, held: bool) -> None:
+        self.set_meta(META_OPERATOR_HOLD, "1" if held else "0")
 
     def load_daily_risk(self, day_key: str, operation_code: str) -> dict:
         with self._connect() as conn:

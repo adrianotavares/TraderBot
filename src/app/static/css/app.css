@@ -354,12 +354,12 @@ h1 {
 }
 
 .range-chips {
-    flex: 0 0 auto;
+    flex: 0 1 auto;
 }
 
 .chip-range {
     min-height: 28px;
-    min-width: 36px;
+    min-width: 34px;
     flex-direction: row;
     align-items: center;
     justify-content: center;
@@ -1163,6 +1163,16 @@ body.page-tracking .portfolio-value {
 body.page-tracking .toolbar {
     margin-bottom: 0;
     flex-shrink: 0;
+}
+
+body.page-tracking .impact-banner {
+    margin: 0 24px 12px;
+    flex-shrink: 0;
+}
+
+.icon-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
 }
 
 .tracking-body {

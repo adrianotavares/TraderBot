@@ -92,9 +92,12 @@ def test_schema_exposes_sections_and_bounds(config_env):
     assert by_path["timing.candle_period"]["type"] == "select"
     assert "4h" in by_path["timing.candle_period"]["options"]
     assert "atr_trend" in by_path["strategy.main"]["options"]
+    assert "vwap_scalp" in by_path["strategy.main"]["options"]
     assert by_path["risk.stop_loss_pct"]["le"] == 100
     assert by_path["strategy.main_args"]["type"] == "json"
     assert by_path["risk.stop_loss_pct"]["description"]
+    assert schema["strategy_defaults"]["vwap_scalp"]["session_start_utc"] == "12:00"
+    assert schema["strategy_defaults"]["atr_trend"]["atr_period"] == 14
 
     assert [f["name"] for f in schema["assets"]["fields"]][:2] == [
         "stock_code",

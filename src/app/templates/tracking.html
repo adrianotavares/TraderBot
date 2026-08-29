@@ -25,16 +25,36 @@
     </div>
 </div>
 
+<div id="operator-hold-banner" class="impact-banner warn" hidden>
+    Hold do operador: o bot não abre compras novas. Stop loss, take profit e
+    saídas da estratégia continuam.
+</div>
+<div id="action-hold-banner" class="impact-banner warn" hidden>
+    Hold de portfólio (liquidate/rebalance): ciclos de estratégia pausados.
+    Libere em Balance se uma ação ficou pela metade.
+</div>
+
 <div class="toolbar">
     <div class="chips" id="asset-chips"></div>
     <div class="chips range-chips" id="range-chips" role="group" aria-label="Período visível">
+        <button type="button" class="chip chip-range" data-range="4h" title="4 horas" aria-label="4 horas">4h</button>
+        <button type="button" class="chip chip-range" data-range="8h" title="8 horas" aria-label="8 horas">8h</button>
+        <button type="button" class="chip chip-range" data-range="12h" title="12 horas" aria-label="12 horas">12h</button>
         <button type="button" class="chip chip-range" data-range="day" title="1 dia" aria-label="1 dia">1d</button>
         <button type="button" class="chip chip-range" data-range="week" title="1 semana" aria-label="1 semana">1w</button>
-        <button type="button" class="chip chip-range active" data-range="month" title="1 mês" aria-label="1 mês">1m</button>
+        <button type="button" class="chip chip-range" data-range="month" title="1 mês" aria-label="1 mês">1m</button>
     </div>
     <button type="button" class="icon-btn" id="refresh-btn">
         <span class="material-symbols-outlined">refresh</span>
         Atualizar
+    </button>
+    <button type="button" class="icon-btn" id="cycle-start-btn">
+        <span class="material-symbols-outlined">play_arrow</span>
+        Start
+    </button>
+    <button type="button" class="icon-btn" id="cycle-hold-btn">
+        <span class="material-symbols-outlined">pause</span>
+        Hold
     </button>
 </div>
 
@@ -82,18 +102,32 @@
         circuit_breaker: "Circuit breaker",
         error: "Após erro",
         hold: "Ação de portfólio",
+        operator_hold: "Hold do operador",
     };
-    let cycleSnapshot = { botRunning: false, serverOffsetMs: 0, cycles: [] };
+    let cycleSnapshot = {
+        botRunning: false,
+        serverOffsetMs: 0,
+        cycles: [],
+        operatorHold: false,
+        actionHold: false,
+    };
     // A 4h candle barely moves in a minute, and each refresh costs one klines
     // call per asset against the same rate limit the bot uses.
     const CHART_REFRESH_MS = 60000;
     const DAY_SECONDS = 24 * 3600;
     const WEEK_SECONDS = 7 * 24 * 3600;
     const MONTH_SECONDS = 30 * 24 * 3600;
+    const RANGE_WINDOWS = {
+        "4h": 4 * 3600,
+        "8h": 8 * 3600,
+        "12h": 12 * 3600,
+        day: DAY_SECONDS,
+        week: WEEK_SECONDS,
+        month: MONTH_SECONDS,
+    };
     const PERIOD_UNITS = { m: 60, h: 3600, d: 86400, w: 604800 };
     const MAX_CHART_BARS = 740;
     let selectedOperation = "";
-    let selectedRange = "month";
     let chartEntries = new Map();
     let holdingsByOperation = {};
 
@@ -115,11 +149,25 @@
         );
     }
 
-    function windowSeconds() {
-        if (selectedRange === "day") return DAY_SECONDS;
-        if (selectedRange === "week") return WEEK_SECONDS;
-        return MONTH_SECONDS;
+    function defaultRangeKey() {
+        // Aim for ~80 candles on screen so 5m is readable (8h) and 4h still
+        // defaults to 1 month.
+        const target = 80 * candlePeriodSeconds(CANDLE_PERIOD);
+        const order = ["4h", "8h", "12h", "day", "week", "month"];
+        return order.find((key) => RANGE_WINDOWS[key] >= target) || "month";
     }
+
+    function windowSeconds() {
+        return RANGE_WINDOWS[selectedRange] || MONTH_SECONDS;
+    }
+
+    function syncRangeChips() {
+        document.querySelectorAll("#range-chips .chip-range").forEach((node) => {
+            node.classList.toggle("active", node.dataset.range === selectedRange);
+        });
+    }
+
+    let selectedRange = defaultRangeKey();
 
     const CHART_BARS = barsForLookback(MONTH_SECONDS);
 
@@ -549,6 +597,36 @@
         valueEl.classList.add("warn");
     }
 
+    function renderHoldControls() {
+        const operatorBanner = document.getElementById("operator-hold-banner");
+        const actionBanner = document.getElementById("action-hold-banner");
+        const startBtn = document.getElementById("cycle-start-btn");
+        const holdBtn = document.getElementById("cycle-hold-btn");
+        if (operatorBanner) {
+            operatorBanner.hidden = !cycleSnapshot.operatorHold;
+        }
+        if (actionBanner) {
+            actionBanner.hidden = !cycleSnapshot.actionHold;
+        }
+        if (startBtn) startBtn.disabled = !cycleSnapshot.operatorHold;
+        if (holdBtn) holdBtn.disabled = cycleSnapshot.operatorHold;
+    }
+
+    async function setOperatorHold(hold) {
+        const response = await traderbotFetch("/api/cycles/control", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ hold }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+            throw new Error(payload.error || "hold failed");
+        }
+        cycleSnapshot.operatorHold = !!payload.operator_hold;
+        cycleSnapshot.actionHold = !!payload.action_hold;
+        renderHoldControls();
+    }
+
     async function loadCycleStatus() {
         try {
             const response = await traderbotFetch("/api/status");
@@ -560,11 +638,14 @@
                 : 0;
             cycleSnapshot.botRunning = !!(data.bot && data.bot.running);
             cycleSnapshot.cycles = configuredCycles(data.cycles || []);
+            cycleSnapshot.operatorHold = !!data.operator_hold;
+            cycleSnapshot.actionHold = !!data.action_hold;
         } catch (err) {
             cycleSnapshot.botRunning = false;
             cycleSnapshot.cycles = [];
         }
         renderCycleCountdown();
+        renderHoldControls();
     }
 
     function renderPnl(pnlUsd, pnlPct) {
@@ -615,6 +696,10 @@
 
     document.getElementById("refresh-btn").onclick = () =>
         Promise.all([refreshAll(), loadCharts()]);
+    document.getElementById("cycle-start-btn").onclick = () =>
+        setOperatorHold(false).catch(() => {});
+    document.getElementById("cycle-hold-btn").onclick = () =>
+        setOperatorHold(true).catch(() => {});
     document.getElementById("range-chips").onclick = (event) => {
         const button = event.target.closest("[data-range]");
         if (!button || button.dataset.range === selectedRange) return;
@@ -626,6 +711,7 @@
             TraderBotChart.setWindow(entry, windowSeconds())
         );
     };
+    syncRangeChips();
     renderChips();
     refreshAll();
     loadCharts();

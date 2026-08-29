@@ -158,6 +158,19 @@
         label.htmlFor = input.id = "cfg-" + path.replace(/\./g, "-");
         wrap.appendChild(input);
 
+        if (path === "strategy.main") {
+            input.addEventListener("change", () => {
+                const defaults = (schema.strategy_defaults || {})[input.value];
+                const argsInput = document.querySelector(
+                    '[data-path="strategy.main_args"]'
+                );
+                if (defaults && argsInput) {
+                    argsInput.value = JSON.stringify(defaults, null, 2);
+                    markDirty();
+                }
+            });
+        }
+
         if (field.description) {
             const help = document.createElement("p");
             help.className = "field-help";

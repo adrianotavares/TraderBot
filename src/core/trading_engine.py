@@ -19,7 +19,7 @@ from services.market_data import MarketDataService, last_candle_epoch
 from services.order_executor import OrderExecutor
 from services.outcome_history import fill_from_order, realized_pnl
 from services.regime_router import can_run_grid, resolve_regime_action
-from strategies.atr_trend import get_atr_trend_snapshot
+from strategies.registry import snapshot_for, strategy_key_for
 
 
 class TradingEngine:
@@ -142,12 +142,23 @@ class TradingEngine:
         )
 
     def _get_strategy_snapshot(self) -> dict | None:
-        if getattr(self.bot.main_strategy, "__name__", "") == "getAtrTrendStrategy":
-            return get_atr_trend_snapshot(
+        key = strategy_key_for(getattr(self.bot, "main_strategy", None))
+        snapshot_fn = snapshot_for(key) if key else None
+        if snapshot_fn is None:
+            return None
+        try:
+            return snapshot_fn(
                 self.bot.stock_data,
                 **(self.bot.main_strategy_args or {}),
             )
-        return None
+        except (TypeError, ValueError):
+            return None
+
+    def _is_operator_hold(self) -> bool:
+        store = self.state_store
+        if store is None or not hasattr(store, "is_operator_hold"):
+            return False
+        return bool(store.is_operator_hold())
 
     def _log_cycle_summary(
         self,
@@ -581,6 +592,8 @@ class TradingEngine:
             self.bot.time_to_sleep = self.bot.time_to_trade
             return
 
+        operator_hold = self._is_operator_hold()
+
         print("------------------------------------------------")
         print(f'Executado {datetime.now().strftime("(%H:%M:%S) %d-%m-%Y")}\n')
 
@@ -653,9 +666,18 @@ class TradingEngine:
                 f"ADX={breakout.adx_value:.1f}, volume={breakout.volume_ratio:.1f}x "
                 f"— reativando atr_trend"
             )
-        elif action == "grid":
+        elif action == "grid" and not operator_hold:
             self._run_grid_cycle(regime)
             return
+
+        elif action == "grid" and operator_hold:
+            log_event(
+                logging.INFO,
+                f"Grid skipped for {self.bot.operation_code}: operator hold",
+                operation_code=self.bot.operation_code,
+                event="operator_hold_blocks_entry",
+                reason="grid",
+            )
 
         elif action == "pause":
             log_event(
@@ -703,6 +725,17 @@ class TradingEngine:
             fallback_strategy=self.bot.fallback_strategy,
             fallback_strategy_args=self.bot.fallback_strategy_args,
         )
+        if operator_hold and decision.side is True:
+            log_event(
+                logging.INFO,
+                f"Buy skipped for {self.bot.operation_code}: operator hold",
+                operation_code=self.bot.operation_code,
+                event="operator_hold_blocks_entry",
+                reason="buy",
+            )
+            decision = StrategyDecision(
+                None, source=decision.source, reason="operator_hold"
+            )
         self._last_strategy_decision = decision
         self.bot.last_trade_decision = decision.side
 

@@ -7,6 +7,7 @@ VALID_REASONS = (
     "circuit_breaker",
     "error",
     "hold",
+    "operator_hold",
 )
 
 
@@ -18,6 +19,8 @@ def infer_sleep_reason(bot, *, error: bool = False) -> str:
         try:
             if store.is_action_hold():
                 return "hold"
+            if store.is_operator_hold():
+                return "operator_hold"
         except Exception:
             logging.exception("Failed to read action hold for cycle heartbeat")
     risk = getattr(bot, "risk_manager", None)

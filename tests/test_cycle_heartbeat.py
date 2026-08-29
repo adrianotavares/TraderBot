@@ -65,6 +65,11 @@ def test_infer_sleep_reason_variants():
     hold_store.is_action_hold.return_value = True
     assert infer_sleep_reason(SimpleNamespace(state_store=hold_store)) == "hold"
 
+    operator_store = MagicMock()
+    operator_store.is_action_hold.return_value = False
+    operator_store.is_operator_hold.return_value = True
+    assert infer_sleep_reason(SimpleNamespace(state_store=operator_store)) == "operator_hold"
+
     risk = SimpleNamespace(is_circuit_open=lambda: True)
     assert infer_sleep_reason(SimpleNamespace(risk_manager=risk)) == "circuit_breaker"
 
