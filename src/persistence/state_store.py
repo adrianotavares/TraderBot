@@ -109,6 +109,16 @@ class StateStore:
                     created_at TEXT NOT NULL,
                     PRIMARY KEY (operation_code, candle_time)
                 );
+                CREATE TABLE IF NOT EXISTS cycle_heartbeat (
+                    operation_code TEXT PRIMARY KEY,
+                    phase TEXT NOT NULL,
+                    cycle_started_at TEXT,
+                    cycle_finished_at TEXT,
+                    sleep_seconds INTEGER,
+                    next_cycle_at TEXT,
+                    sleep_reason TEXT,
+                    updated_at TEXT NOT NULL
+                );
                 """
             )
             self._migrate(conn)
@@ -454,6 +464,74 @@ class StateStore:
                 """,
                 params,
             )
+
+    def save_cycle_heartbeat(
+        self,
+        operation_code: str,
+        phase: str,
+        *,
+        cycle_started_at: str | None = None,
+        cycle_finished_at: str | None = None,
+        sleep_seconds: int | None = None,
+        next_cycle_at: str | None = None,
+        sleep_reason: str | None = None,
+    ) -> None:
+        """Dashboard countdown source. Never called with trading-state fields.
+
+        NULL fields keep the previous value so a 'running' write does not wipe
+        the last sleep interval.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO cycle_heartbeat (
+                    operation_code, phase, cycle_started_at, cycle_finished_at,
+                    sleep_seconds, next_cycle_at, sleep_reason, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(operation_code) DO UPDATE SET
+                    phase = excluded.phase,
+                    cycle_started_at = COALESCE(
+                        excluded.cycle_started_at, cycle_heartbeat.cycle_started_at
+                    ),
+                    cycle_finished_at = COALESCE(
+                        excluded.cycle_finished_at, cycle_heartbeat.cycle_finished_at
+                    ),
+                    sleep_seconds = COALESCE(
+                        excluded.sleep_seconds, cycle_heartbeat.sleep_seconds
+                    ),
+                    next_cycle_at = COALESCE(
+                        excluded.next_cycle_at, cycle_heartbeat.next_cycle_at
+                    ),
+                    sleep_reason = COALESCE(
+                        excluded.sleep_reason, cycle_heartbeat.sleep_reason
+                    ),
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    operation_code,
+                    phase,
+                    cycle_started_at,
+                    cycle_finished_at,
+                    sleep_seconds,
+                    next_cycle_at,
+                    sleep_reason,
+                    now,
+                ),
+            )
+
+    def list_cycle_heartbeats(self) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT operation_code, phase, cycle_started_at, cycle_finished_at,
+                       sleep_seconds, next_cycle_at, sleep_reason, updated_at
+                FROM cycle_heartbeat
+                ORDER BY CASE WHEN phase = 'running' THEN 0 ELSE 1 END,
+                         next_cycle_at ASC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def list_regime(
         self,

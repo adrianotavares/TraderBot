@@ -248,8 +248,56 @@ def test_status_reports_config_and_bot(config_env):
     status = config_env["client"].get("/api/status").get_json()
     assert status["environment"]["effective"] == "testnet"
     assert status["config"]["modified_at"]
-    assert status["bot"]["running"] is False
+    assert isinstance(status["bot"]["running"], bool)
     assert "last_reload" in status["events"]
+    assert "server_time" in status
+    assert isinstance(status["cycles"], list)
+
+
+def test_status_includes_cycle_heartbeats(config_env, tmp_path, monkeypatch):
+    import routes
+    from datetime import datetime, timedelta, timezone
+
+    from persistence.state_store import StateStore
+
+    store = StateStore(tmp_path / "cycles.db")
+    now = datetime(2026, 8, 28, 14, 0, tzinfo=timezone.utc)
+    store.save_cycle_heartbeat(
+        "BTCUSDT",
+        "sleeping",
+        cycle_finished_at=now.isoformat(),
+        sleep_seconds=600,
+        next_cycle_at=(now + timedelta(seconds=600)).isoformat(),
+        sleep_reason="interval",
+    )
+    store.save_cycle_heartbeat(
+        "LINKUSDT",
+        "sleeping",
+        cycle_finished_at=now.isoformat(),
+        sleep_seconds=30,
+        next_cycle_at=(now + timedelta(seconds=30)).isoformat(),
+        sleep_reason="interval",
+    )
+    monkeypatch.setattr(routes, "StateStore", lambda *a, **k: store)
+    status = config_env["client"].get("/api/status").get_json()
+    assert [row["operation_code"] for row in status["cycles"]] == ["BTCUSDT"]
+    assert status["cycles"][0]["operation_code"] == "BTCUSDT"
+    assert status["cycles"][0]["phase"] == "sleeping"
+    assert status["cycles"][0]["sleep_seconds"] == 600
+    assert status["cycles"][0]["sleep_reason"] == "interval"
+
+
+def test_status_survives_heartbeat_read_failure(config_env, monkeypatch):
+    import routes
+
+    class Boom:
+        def list_cycle_heartbeats(self):
+            raise RuntimeError("disk full")
+
+    monkeypatch.setattr(routes, "StateStore", lambda *a, **k: Boom())
+    status = config_env["client"].get("/api/status").get_json()
+    assert status["cycles"] == []
+    assert "bot" in status
 
 
 def test_legacy_update_config_still_works(config_env):

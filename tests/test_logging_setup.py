@@ -24,6 +24,22 @@ def test_read_structured_logs_newest_first(tmp_path):
     assert [item["message"] for item in entries] == ["third", "second", "first"]
 
 
+def test_read_structured_logs_keeps_only_configured_operations(tmp_path):
+    log_file = tmp_path / "trading_bot.json.log"
+    _write_log(
+        log_file,
+        [
+            {"message": "btc", "operation_code": "BTCUSDT", "event": "asset_variation"},
+            {"message": "removed", "operation_code": "LINKUSDT", "event": "cycle_summary"},
+            {"message": "reload", "event": "config_reloaded"},
+        ],
+    )
+    entries = read_structured_logs(
+        path=str(log_file), operation_codes=["BTCUSDT", "ETHUSDT"]
+    )
+    assert [item["message"] for item in entries] == ["reload", "btc"]
+
+
 def test_read_structured_logs_filters_by_operation(tmp_path):
     log_file = tmp_path / "trading_bot.json.log"
     _write_log(

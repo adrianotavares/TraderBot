@@ -806,9 +806,14 @@ def api_tracking_charts():
 def get_logs():
     try:
         limit = request.args.get("limit", 200)
+        requested = request.args.get("operation_code") or None
+        allowed = _configured_operation_codes()
+        if requested and allowed is not None and requested not in allowed:
+            return jsonify({"logs": []})
         entries = read_structured_logs(
             limit=int(limit),
-            operation_code=request.args.get("operation_code") or None,
+            operation_code=requested,
+            operation_codes=None if requested else allowed,
             stock_code=request.args.get("stock_code") or None,
             event=request.args.get("event") or None,
         )
@@ -961,6 +966,45 @@ def api_revert_config():
         return jsonify({"error": f"Erro ao restaurar backup: {str(e)}"}), 500
 
 
+def _configured_operation_codes(settings=None) -> set[str] | None:
+    """Pairs currently loaded from YAML. None means the filter could not be built."""
+    try:
+        if settings is None:
+            settings, _ = _yaml_settings()
+        return {asset.operation_code for asset in settings.assets}
+    except Exception:
+        logging.exception("Failed to load configured assets")
+        return None
+
+
+def _cycle_heartbeats_payload(settings=None) -> list[dict]:
+    """Read-only countdown source. A store failure must not break /api/status."""
+    try:
+        rows = StateStore().list_cycle_heartbeats()
+    except Exception:
+        logging.exception("Failed to load cycle heartbeats")
+        return []
+    allowed = _configured_operation_codes(settings)
+    payload = []
+    for row in rows:
+        code = row.get("operation_code")
+        if allowed is not None and code not in allowed:
+            continue
+        payload.append(
+            {
+                "operation_code": code,
+                "phase": row.get("phase"),
+                "cycle_started_at": row.get("cycle_started_at"),
+                "cycle_finished_at": row.get("cycle_finished_at"),
+                "sleep_seconds": row.get("sleep_seconds"),
+                "next_cycle_at": row.get("next_cycle_at"),
+                "sleep_reason": row.get("sleep_reason"),
+                "updated_at": row.get("updated_at"),
+            }
+        )
+    return payload
+
+
 @routes.route("/api/status", methods=["GET"])
 def api_status():
     try:
@@ -983,6 +1027,8 @@ def api_status():
                     "last_restart_required": _latest_event("config_requires_restart"),
                 },
                 "backups": len(list_config_backups()),
+                "server_time": datetime.now(timezone.utc).isoformat(),
+                "cycles": _cycle_heartbeats_payload(settings),
             }
         )
     except Exception as e:

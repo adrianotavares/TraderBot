@@ -11,6 +11,7 @@ from modules.BinanceTraderBot import BinanceTraderBot
 from Models.StockStartModel import StockStartModel
 from persistence.process_lock import ProcessLock, ProcessLockHeld, lock_path_for
 from persistence.state_store import DEFAULT_DB_PATH
+from services.cycle_heartbeat import mark_cycle_end, mark_cycle_start
 
 shutdown_event = threading.Event()
 thread_lock = threading.Lock()
@@ -63,19 +64,9 @@ def trader_loop(stock_start: StockStartModel, watch: SettingsWatch, env):
                 bot._settings_generation = generation
             if settings.thread_lock:
                 with thread_lock:
-                    print(f"[{bot.operation_code}][{total_executed}] cycle start")
-                    bot.execute()
-                    print(
-                        f"^ [{bot.operation_code}][{total_executed}] "
-                        f"time_to_sleep = '{bot.time_to_sleep/60:.2f} min'"
-                    )
+                    _run_cycle(bot, total_executed)
             else:
-                print(f"[{bot.operation_code}][{total_executed}] cycle start")
-                bot.execute()
-                print(
-                    f"^ [{bot.operation_code}][{total_executed}] "
-                    f"time_to_sleep = '{bot.time_to_sleep/60:.2f} min'"
-                )
+                _run_cycle(bot, total_executed)
             total_executed += 1
         except Exception as e:
             log_event(
@@ -85,8 +76,20 @@ def trader_loop(stock_start: StockStartModel, watch: SettingsWatch, env):
                 event="loop_error",
             )
             bot.time_to_sleep = bot.time_to_trade
+            mark_cycle_end(bot, error=True)
 
         shutdown_event.wait(bot.time_to_sleep)
+
+
+def _run_cycle(bot, total_executed):
+    print(f"[{bot.operation_code}][{total_executed}] cycle start")
+    mark_cycle_start(bot)
+    bot.execute()
+    print(
+        f"^ [{bot.operation_code}][{total_executed}] "
+        f"time_to_sleep = '{bot.time_to_sleep/60:.2f} min'"
+    )
+    mark_cycle_end(bot)
 
 
 def _handle_sighup(signum, frame):
