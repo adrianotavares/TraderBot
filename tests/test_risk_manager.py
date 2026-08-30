@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+import pandas as pd
 import pytest
 
 from core.trading_engine import TradingEngine
@@ -278,3 +279,64 @@ def test_closed_trade_records_real_pnl_and_blocks(tmp_path):
         operation_code="BTCUSDT",
     )
     assert restarted.should_stop_trading_daily_loss()
+
+
+def _closes(*prices):
+    return pd.DataFrame({"close_price": list(prices)})
+
+
+def test_stop_loss_stays_fixed_on_entry_when_trailing_off():
+    risk = RiskManager(
+        acceptable_loss_pct=1.0,
+        stop_loss_pct=2.0,
+        take_profit_at=[],
+        take_profit_amount=[],
+        trailing_stop_loss=False,
+    )
+    assert risk.stop_loss_price(100.0, peak_price=105.0) == pytest.approx(98.0)
+    assert risk.check_stop_loss(_closes(102.0, 102.0), 100.0, True, peak_price=105.0) is False
+    assert risk.check_stop_loss(_closes(97.0, 97.0), 100.0, True, peak_price=105.0) is True
+
+
+def test_trailing_stop_uses_peak_and_never_lowers_anchor():
+    risk = RiskManager(
+        acceptable_loss_pct=1.0,
+        stop_loss_pct=2.0,
+        take_profit_at=[],
+        take_profit_amount=[],
+        trailing_stop_loss=True,
+    )
+    assert risk.stop_loss_price(100.0, peak_price=105.0) == pytest.approx(102.9)
+    assert risk.check_stop_loss(_closes(103.5, 103.5), 100.0, True, peak_price=105.0) is False
+    assert risk.check_stop_loss(_closes(102.0, 102.0), 100.0, True, peak_price=105.0) is True
+    assert risk.check_stop_loss(_closes(97.0, 97.0), 100.0, True, peak_price=0.0) is True
+
+
+def test_ratchet_peak_tracks_high_close_and_resets_when_flat():
+    assert (
+        RiskManager.ratchet_peak(
+            position_open=True,
+            last_buy_price=100.0,
+            peak_price=0.0,
+            mark_price=105.0,
+        )
+        == 105.0
+    )
+    assert (
+        RiskManager.ratchet_peak(
+            position_open=True,
+            last_buy_price=100.0,
+            peak_price=105.0,
+            mark_price=103.0,
+        )
+        == 105.0
+    )
+    assert (
+        RiskManager.ratchet_peak(
+            position_open=False,
+            last_buy_price=100.0,
+            peak_price=105.0,
+            mark_price=103.0,
+        )
+        == 0.0
+    )

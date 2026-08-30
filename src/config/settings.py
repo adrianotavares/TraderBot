@@ -85,7 +85,8 @@ class StrategyConfig(BaseModel):
         default_factory=dict,
         description=(
             "Parâmetros da estratégia principal. Cada chave do registry tem defaults "
-            "próprios (ex.: vwap_scalp usa sessão UTC, ATR, ADX, RSI e hurdle de taxa)."
+            "próprios (ex.: vwap_scalp usa sessão UTC e fade; orb_day usa faixa de "
+            "abertura e ruptura)."
         ),
     )
     fallback: str = Field(
@@ -117,7 +118,19 @@ class RiskConfig(BaseModel):
         default=3.5,
         ge=0,
         le=100,
-        description="Stop loss (%) medido a partir do preço de compra",
+        description=(
+            "Stop loss (%) abaixo da âncora: preço de compra, "
+            "ou o melhor close da posição se o trailing estiver ligado"
+        ),
+    )
+    trailing_stop_loss: bool = Field(
+        default=False,
+        title="Stop loss trailing",
+        description=(
+            "Quando ligado, o stop sobe com o melhor close da posição e nunca desce. "
+            "Desligado, o stop fica fixo no preço de entrada. "
+            "Em mercado lateral pode vender num recuo normal após um pico."
+        ),
     )
     take_profit: List[TakeProfitLevel] = Field(
         default_factory=list, description="Escada de realização parcial de lucro"
@@ -668,6 +681,7 @@ SENSITIVE_CONFIG_FIELDS = frozenset(
         "assets.traded_percentage",
         "risk.max_daily_loss_usdt",
         "risk.stop_loss_pct",
+        "risk.trailing_stop_loss",
     }
 )
 

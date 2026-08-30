@@ -10,6 +10,7 @@ from strategies.weapon_candle_trade_strategy import getWeaponCandleTradeStrategy
 from strategies.ut_bot_alerts import utBotAlerts
 from strategies.atr_trend import getAtrTrendStrategy, get_atr_trend_snapshot
 from strategies.vwap_scalp import getVwapScalpStrategy, get_vwap_scalp_snapshot
+from strategies.orb_day import getOrbDayStrategy, get_orb_day_snapshot
 
 STRATEGY_REGISTRY = {
     "weapon_candle": getWeaponCandleTradeStrategy,
@@ -21,11 +22,13 @@ STRATEGY_REGISTRY = {
     "ut_bot_alerts": utBotAlerts,
     "atr_trend": getAtrTrendStrategy,
     "vwap_scalp": getVwapScalpStrategy,
+    "orb_day": getOrbDayStrategy,
 }
 
 STRATEGY_SNAPSHOTS = {
     "atr_trend": get_atr_trend_snapshot,
     "vwap_scalp": get_vwap_scalp_snapshot,
+    "orb_day": get_orb_day_snapshot,
 }
 
 # Legacy names used by the old dashboard
@@ -39,6 +42,7 @@ LEGACY_STRATEGY_NAMES = {
     "utBotAlerts": "ut_bot_alerts",
     "getAtrTrendStrategy": "atr_trend",
     "getVwapScalpStrategy": "vwap_scalp",
+    "getOrbDayStrategy": "orb_day",
 }
 
 _SKIP_ARG_NAMES = frozenset({"stock_data", "verbose"})

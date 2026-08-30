@@ -27,6 +27,21 @@ def test_state_persistence_and_reconcile():
         assert reconciled.actual_trade_position is False
         assert reconciled.take_profit_index == 0
         assert reconciled.last_buy_price == 51000
+        assert reconciled.stop_loss_peak_price == 0.0
+
+
+def test_stop_loss_peak_persists_while_open(tmp_path):
+    store = StateStore(tmp_path / "test.db")
+    state = BotState(
+        operation_code="ETHUSDT",
+        last_buy_price=2000.0,
+        actual_trade_position=True,
+        stop_loss_peak_price=2100.0,
+    )
+    store.save_state(state)
+    loaded = store.load_state("ETHUSDT")
+    assert loaded.stop_loss_peak_price == 2100.0
+    assert loaded.actual_trade_position is True
 
 
 def test_record_outcome_and_list_newest_first():

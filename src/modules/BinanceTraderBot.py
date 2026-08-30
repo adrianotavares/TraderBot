@@ -169,6 +169,7 @@ class BinanceTraderBot(PersistedTradeFields):
             circuit_breaker_pause_seconds=risk_config.get(
                 "circuit_breaker_pause_seconds", 300
             ),
+            trailing_stop_loss=risk_config.get("trailing_stop_loss", False),
             state_store=self.state_store,
             operation_code=operation_code,
         )
@@ -326,6 +327,7 @@ class BinanceTraderBot(PersistedTradeFields):
             max_grid_open_orders=settings.grid.max_open_orders,
             circuit_breaker_errors=settings.operation.circuit_breaker_errors,
             circuit_breaker_pause_seconds=settings.operation.circuit_breaker_pause_seconds,
+            trailing_stop_loss=risk.trailing_stop_loss,
         )
 
         alerts = settings.alerts.model_dump()

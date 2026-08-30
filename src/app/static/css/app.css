@@ -819,6 +819,68 @@ textarea {
     background: var(--md-input-invalid-bg);
 }
 
+.toggle-control {
+    display: flex;
+    align-items: center;
+}
+
+.toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--md-outline);
+    border-radius: 20px;
+    background: var(--md-input-bg);
+    color: var(--md-on-surface-variant);
+    padding: 6px 14px 6px 6px;
+    font: inherit;
+    cursor: pointer;
+    width: fit-content;
+}
+
+.toggle-btn.on {
+    border-color: var(--md-primary);
+    color: var(--md-primary);
+}
+
+.toggle-track {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+    background: var(--md-outline);
+    flex-shrink: 0;
+}
+
+.toggle-btn.on .toggle-track {
+    background: var(--md-primary);
+}
+
+.toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--md-surface-container);
+    transition: transform 0.15s ease;
+}
+
+.toggle-btn.on .toggle-thumb {
+    transform: translateX(18px);
+}
+
+.toggle-text {
+    font-size: 0.85rem;
+    font-weight: 500;
+    min-width: 4.6rem;
+}
+
+.field.invalid .toggle-btn {
+    border-color: var(--md-down);
+}
+
 .field label {
     display: flex;
     align-items: center;

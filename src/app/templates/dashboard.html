@@ -100,18 +100,6 @@
                 input.appendChild(node);
             });
             input.value = value === undefined || value === null ? "" : String(value);
-        } else if (field.type === "bool") {
-            input = document.createElement("select");
-            [
-                ["true", "Sim"],
-                ["false", "Não"],
-            ].forEach(([optionValue, label]) => {
-                const node = document.createElement("option");
-                node.value = optionValue;
-                node.textContent = label;
-                input.appendChild(node);
-            });
-            input.value = value ? "true" : "false";
         } else if (field.type === "json") {
             input = document.createElement("textarea");
             input.rows = 4;
@@ -136,6 +124,51 @@
         return input;
     }
 
+    function buildToggleControl(value) {
+        const holder = document.createElement("div");
+        holder.className = "toggle-control";
+
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.dataset.type = "bool";
+        input.value = value ? "true" : "false";
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "toggle-btn" + (value ? " on" : "");
+        button.setAttribute("role", "switch");
+        button.setAttribute("aria-checked", value ? "true" : "false");
+
+        const track = document.createElement("span");
+        track.className = "toggle-track";
+        const thumb = document.createElement("span");
+        thumb.className = "toggle-thumb";
+        track.appendChild(thumb);
+
+        const text = document.createElement("span");
+        text.className = "toggle-text";
+        text.textContent = value ? "Ligado" : "Desligado";
+
+        button.appendChild(track);
+        button.appendChild(text);
+
+        function setOn(on) {
+            input.value = on ? "true" : "false";
+            button.classList.toggle("on", on);
+            button.setAttribute("aria-checked", on ? "true" : "false");
+            text.textContent = on ? "Ligado" : "Desligado";
+        }
+
+        button.addEventListener("click", () => {
+            setOn(input.value !== "true");
+            markDirty();
+        });
+
+        holder.appendChild(input);
+        holder.appendChild(button);
+        return { holder, input, button };
+    }
+
     function buildField(field, value, path, scope) {
         const wrap = document.createElement("div");
         wrap.className = "field";
@@ -151,12 +184,22 @@
         }
         wrap.appendChild(label);
 
-        const input = buildInput(field, value);
+        const fieldId = "cfg-" + path.replace(/\./g, "-");
+        let input;
+        if (field.type === "bool") {
+            const toggle = buildToggleControl(value);
+            input = toggle.input;
+            toggle.button.id = fieldId;
+            label.htmlFor = fieldId;
+            wrap.appendChild(toggle.holder);
+        } else {
+            input = buildInput(field, value);
+            label.htmlFor = input.id = fieldId;
+            wrap.appendChild(input);
+        }
         input.dataset.path = path;
         input.dataset.scope = scope;
         input.dataset.name = field.name;
-        label.htmlFor = input.id = "cfg-" + path.replace(/\./g, "-");
-        wrap.appendChild(input);
 
         if (path === "strategy.main") {
             input.addEventListener("change", () => {

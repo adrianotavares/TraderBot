@@ -1,61 +1,47 @@
-environment: testnet
+environment: mainnet
 thread_lock: true
 strategy:
-  main: vwap_scalp
+  main: atr_trend
   main_args:
-    session_start_utc: '12:00'
-    session_end_utc: '20:00'
-    vwap_atr_k: 1.0
+    atr_multiplier: 2.5
     atr_period: 14
-    adx_period: 14
-    adx_max: 22.0
-    rsi_period: 14
-    rsi_buy: 30.0
-    rsi_exit: 55.0
-    volume_sma: 20
-    volume_mult: 1.2
-    fee_round_trip_pct: 0.15
-    min_edge_multiple: 3.0
+    trend_sma_period: 200
   fallback: moving_average
   fallback_args:
     fast_window: 21
     slow_window: 55
-  fallback_enabled: false
+  fallback_enabled: true
 risk:
   acceptable_loss_pct: 1.5
   stop_loss_pct: 2.0
+  trailing_stop_loss: true
   take_profit:
   - at: 7.0
     amount: 100.0
-  max_daily_loss_usdt: 20.0
+  max_daily_loss_usdt: 10.0
   max_trades_per_day: 5
   max_open_orders: 3
   max_grid_trades_per_day: 20
 timing:
-  candle_period: 5m
-  tempo_entre_trades: 60
-  delay_entre_ordens: 60
+  candle_period: 4h
+  tempo_entre_trades: 300
+  delay_entre_ordens: 1200
 assets:
 - stock_code: BTC
   operation_code: BTCUSDT
   traded_quantity: 0.0
-  traded_percentage: 40.0
+  traded_percentage: 30.0
   breakout_price: 78000.0
 - stock_code: ETH
   operation_code: ETHUSDT
   traded_quantity: 0.0
-  traded_percentage: 30.0
+  traded_percentage: 40.0
   breakout_price: 2450.0
 - stock_code: SOL
   operation_code: SOLUSDT
   traded_quantity: 0.0
-  traded_percentage: 10.0
+  traded_percentage: 30.0
   breakout_price: 458.0
-- stock_code: XRP
-  operation_code: XRPUSDT
-  traded_quantity: 0.0
-  traded_percentage: 10.0
-  breakout_price: 1.5
 operation:
   cancel_orders_on_shutdown: false
   circuit_breaker_errors: 3
@@ -64,13 +50,13 @@ alerts:
   enabled: false
   webhook_url: ''
 regime:
-  enabled: false
+  enabled: true
   adx_period: 14
   adx_lateral_threshold: 20.0
   adx_trend_threshold: 25.0
   rsi_period: 14
-  rsi_low: 40.0
-  rsi_high: 60.0
+  rsi_low: 35.0
+  rsi_high: 65.0
   ema_fast: 20
   ema_slow: 50
   ema_compression_pct: 0.5

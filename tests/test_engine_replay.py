@@ -65,6 +65,48 @@ def test_replay_stop_loss_sells_before_strategy(tmp_path):
     assert loaded.actual_trade_position is False
 
 
+def test_replay_trailing_stop_sells_from_peak(tmp_path):
+    store = StateStore(tmp_path / "replay.db")
+    data = _ohlc(5, last_price=102.0, prev_price=102.0)
+    bot, engine = build_replay_engine(
+        data,
+        store=store,
+        quote_balance=0.0,
+        base_balance=0.1,
+        stop_loss_pct=2.0,
+        trailing_stop_loss=True,
+        main_strategy=lambda **_k: None,
+    )
+    engine.bootstrap()
+    bot.last_buy_price = 100.0
+    engine.state.stop_loss_peak_price = 105.0
+    engine.execute()
+    assert bot.actual_trade_position is False
+    assert store.list_outcomes()[0]["kind"] == "stop_loss"
+    assert engine.state.stop_loss_peak_price == 0.0
+
+
+def test_replay_fixed_stop_ignores_pullback_above_entry_floor(tmp_path):
+    store = StateStore(tmp_path / "replay.db")
+    data = _ohlc(5, last_price=102.0, prev_price=102.0)
+    bot, engine = build_replay_engine(
+        data,
+        store=store,
+        quote_balance=0.0,
+        base_balance=0.1,
+        stop_loss_pct=2.0,
+        trailing_stop_loss=False,
+        main_strategy=lambda **_k: None,
+    )
+    engine.bootstrap()
+    bot.last_buy_price = 100.0
+    engine.state.stop_loss_peak_price = 105.0
+    engine.execute()
+    assert bot.actual_trade_position is True
+    assert store.list_outcomes() == []
+    assert engine.state.stop_loss_peak_price == 105.0
+
+
 def test_replay_strategy_buy_fills(tmp_path):
     store = StateStore(tmp_path / "replay.db")
     data = _ohlc(30, last_price=100.0, prev_price=100.0)

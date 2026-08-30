@@ -487,17 +487,18 @@
             text: "Entrada " + formatPrice(levels.entry, precision),
         });
         if (levels.stop_loss) {
+            var slPrefix = levels.stop_loss.trailing ? "SL trail -" : "SL -";
             addPriceLine(
                 handle,
                 levels.stop_loss.price,
                 "sl",
-                "SL -" + levels.stop_loss.pct.toFixed(2) + "%",
+                slPrefix + levels.stop_loss.pct.toFixed(2) + "%",
                 LWC.LineStyle.Dashed
             );
             items.push({
                 cls: "sl",
                 text:
-                    "SL -" +
+                    slPrefix +
                     levels.stop_loss.pct.toFixed(2) +
                     "% · " +
                     formatPrice(levels.stop_loss.price, precision),

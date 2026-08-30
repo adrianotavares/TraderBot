@@ -93,11 +93,16 @@ def test_schema_exposes_sections_and_bounds(config_env):
     assert "4h" in by_path["timing.candle_period"]["options"]
     assert "atr_trend" in by_path["strategy.main"]["options"]
     assert "vwap_scalp" in by_path["strategy.main"]["options"]
+    assert "orb_day" in by_path["strategy.main"]["options"]
     assert by_path["risk.stop_loss_pct"]["le"] == 100
+    assert by_path["risk.trailing_stop_loss"]["type"] == "bool"
+    assert by_path["risk.trailing_stop_loss"]["label"] == "Stop loss trailing"
     assert by_path["strategy.main_args"]["type"] == "json"
     assert by_path["risk.stop_loss_pct"]["description"]
     assert schema["strategy_defaults"]["vwap_scalp"]["session_start_utc"] == "12:00"
     assert schema["strategy_defaults"]["atr_trend"]["atr_period"] == 14
+    assert schema["strategy_defaults"]["orb_day"]["opening_range_bars"] == 2
+    assert schema["strategy_defaults"]["orb_day"]["adx_min"] == 25.0
 
     assert [f["name"] for f in schema["assets"]["fields"]][:2] == [
         "stock_code",
@@ -121,6 +126,17 @@ def test_env_override_is_reported_as_conflict(config_env, monkeypatch):
     assert payload["environment"]["conflict"] is True
     # The form still edits the file's own value, not the override.
     assert payload["config"]["environment"] == "testnet"
+
+
+def test_validate_trailing_stop_is_soft(config_env):
+    response = config_env["client"].post(
+        "/api/config/validate", json={"risk": {"trailing_stop_loss": True}}
+    )
+    result = response.get_json()
+    assert result["valid"] is True
+    assert result["changed"] is True
+    assert "risk" in result["soft"]
+    assert result["hard"] == []
 
 
 def test_validate_classifies_soft_change(config_env):
@@ -190,6 +206,14 @@ def test_save_writes_yaml_and_reports_impact(config_env):
     assert result["saved"] is True
     assert "risk" in result["soft"]
     assert read_yaml(config_env["path"])["risk"]["stop_loss_pct"] == 4.25
+
+
+def test_save_trailing_stop_loss_toggle(config_env):
+    response = config_env["client"].post(
+        "/api/config", json={"risk": {"trailing_stop_loss": True}}
+    )
+    assert response.status_code == 200
+    assert read_yaml(config_env["path"])["risk"]["trailing_stop_loss"] is True
 
 
 def test_save_rejects_invalid_payload_without_touching_file(config_env):

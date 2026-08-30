@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import pandas as pd
 
 
@@ -56,6 +58,71 @@ def in_session(
     if start_m < end_m:
         return start_m <= current < end_m
     return current >= start_m or current < end_m
+
+
+@dataclass(frozen=True)
+class OpeningRange:
+    """High/low of the first N in-session bars of a UTC day."""
+
+    high: float | None
+    low: float | None
+    complete: bool
+    bars_used: int
+
+
+def opening_range(
+    stock_data: pd.DataFrame,
+    session_start_utc: str = "12:00",
+    session_end_utc: str = "20:00",
+    opening_range_bars: int = 2,
+    as_of=None,
+) -> OpeningRange:
+    """Max high / min low of the first ``opening_range_bars`` in-session bars.
+
+    Uses the UTC day of ``as_of`` (last bar when omitted). Later session bars
+    do not move the range. Bars outside the session window are ignored.
+    """
+    bars = max(int(opening_range_bars), 1)
+    if stock_data is None or len(stock_data) == 0 or "open_time" not in stock_data:
+        return OpeningRange(high=None, low=None, complete=False, bars_used=0)
+
+    if as_of is None:
+        as_of = stock_data["open_time"].iloc[-1]
+    as_of_ts = candle_utc(as_of)
+    if pd.isna(as_of_ts):
+        return OpeningRange(high=None, low=None, complete=False, bars_used=0)
+    day = as_of_ts.floor("D")
+
+    highs = pd.to_numeric(stock_data["high_price"], errors="coerce")
+    lows = pd.to_numeric(stock_data["low_price"], errors="coerce")
+
+    used = 0
+    or_high: float | None = None
+    or_low: float | None = None
+    for position in range(len(stock_data)):
+        timestamp = candle_utc(stock_data["open_time"].iloc[position])
+        if pd.isna(timestamp) or timestamp.floor("D") != day or timestamp > as_of_ts:
+            continue
+        if not in_session(timestamp, session_start_utc, session_end_utc):
+            continue
+        high = highs.iloc[position]
+        low = lows.iloc[position]
+        if pd.isna(high) or pd.isna(low):
+            continue
+        high_f = float(high)
+        low_f = float(low)
+        or_high = high_f if or_high is None else max(or_high, high_f)
+        or_low = low_f if or_low is None else min(or_low, low_f)
+        used += 1
+        if used >= bars:
+            break
+
+    return OpeningRange(
+        high=or_high,
+        low=or_low,
+        complete=used >= bars,
+        bars_used=used,
+    )
 
 
 def session_vwap(

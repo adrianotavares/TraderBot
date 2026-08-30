@@ -362,7 +362,36 @@ def test_compute_levels_derives_tp_and_sl_from_entry():
     assert levels["take_profit"]["price"] == 107.0
     assert levels["take_profit"]["pct"] == 7.0
     assert levels["stop_loss"]["price"] == 98.0
+    assert levels["stop_loss"]["trailing"] is False
     assert levels["min_sell"]["price"] == 98.5
+
+
+def test_compute_levels_trails_stop_from_peak():
+    levels = compute_levels(
+        entry_price=100.0,
+        position_open=True,
+        stop_loss_pct=2.0,
+        acceptable_loss_pct=1.5,
+        take_profit=[],
+        trailing_stop_loss=True,
+        peak_price=105.0,
+    )
+    assert levels["stop_loss"]["price"] == pytest.approx(102.9)
+    assert levels["stop_loss"]["trailing"] is True
+
+
+def test_compute_levels_trailing_without_peak_stays_on_entry():
+    levels = compute_levels(
+        entry_price=100.0,
+        position_open=True,
+        stop_loss_pct=2.0,
+        acceptable_loss_pct=1.5,
+        take_profit=[],
+        trailing_stop_loss=True,
+        peak_price=0.0,
+    )
+    assert levels["stop_loss"]["price"] == 98.0
+    assert levels["stop_loss"]["trailing"] is True
 
 
 def test_compute_levels_returns_none_when_flat():

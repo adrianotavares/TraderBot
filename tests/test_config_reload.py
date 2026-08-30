@@ -141,8 +141,10 @@ def test_apply_config_keeps_daily_counters(tmp_path):
         max_grid_open_orders=8,
         circuit_breaker_errors=4,
         circuit_breaker_pause_seconds=60,
+        trailing_stop_loss=True,
     )
     assert risk._daily_loss_usdt == 12.5
     assert risk._daily_trades == 1
     assert risk.max_daily_loss_usdt == 20.0
     assert risk.stop_loss_pct == 0.03
+    assert risk.trailing_stop_loss is True

@@ -17,6 +17,7 @@ from services.asset_variation import (
 )
 from services.market_data import MarketDataService, last_candle_epoch
 from services.order_executor import OrderExecutor
+from services.risk_manager import RiskManager
 from services.outcome_history import fill_from_order, realized_pnl
 from services.regime_router import can_run_grid, resolve_regime_action
 from strategies.registry import snapshot_for, strategy_key_for
@@ -78,6 +79,7 @@ class TradingEngine:
             self.bot.last_sell_price = self.bot.getLastSellPrice(verbose)
             if not self.bot.actual_trade_position:
                 self.bot.take_profit_index = 0
+                self.state.stop_loss_peak_price = 0.0
         except BinanceAPIException as e:
             self.risk_manager.record_api_error()
             logging.error("Data update failed for %s: %s", self.bot.operation_code, e)
@@ -196,6 +198,19 @@ class TradingEngine:
             payload["position_value_usd"] = round(quantity * mark_price, 4)
             if pnl_pct is not None:
                 payload["unrealized_pnl_pct"] = round(pnl_pct, 2)
+            stop_price = self.risk_manager.stop_loss_price(
+                float(self.bot.last_buy_price or 0),
+                float(self.state.stop_loss_peak_price or 0),
+            )
+            if stop_price > 0:
+                payload["stop_loss_price"] = round(stop_price, 4)
+                payload["stop_loss_trailing"] = bool(
+                    self.risk_manager.trailing_stop_loss
+                )
+                if self.risk_manager.trailing_stop_loss:
+                    payload["stop_loss_peak"] = round(
+                        float(self.state.stop_loss_peak_price or 0), 4
+                    )
         if variation:
             payload.update(
                 {
@@ -412,11 +427,24 @@ class TradingEngine:
             level = logging.INFO
         log_event(level, message, **payload)
 
+    def _update_stop_loss_peak(self) -> None:
+        mark = 0.0
+        stock_data = getattr(self.bot, "stock_data", None)
+        if stock_data is not None and len(stock_data):
+            mark = float(stock_data["close_price"].iloc[-1])
+        self.state.stop_loss_peak_price = RiskManager.ratchet_peak(
+            position_open=bool(self.bot.actual_trade_position),
+            last_buy_price=float(self.bot.last_buy_price or 0),
+            peak_price=float(self.state.stop_loss_peak_price or 0),
+            mark_price=mark,
+        )
+
     def _handle_stop_loss(self) -> bool:
         if not self.risk_manager.check_stop_loss(
             self.bot.stock_data,
             self.bot.last_buy_price,
             self.bot.actual_trade_position,
+            peak_price=float(self.state.stop_loss_peak_price or 0),
         ):
             return False
 
@@ -436,9 +464,22 @@ class TradingEngine:
             return False
         if OrderExecutor.is_filled(order):
             self.state_store.log_order(self.bot.operation_code, order)
-            self._record_closed_trade("stop_loss", order)
+            stop_price = self.risk_manager.stop_loss_price(
+                float(self.bot.last_buy_price or 0),
+                float(self.state.stop_loss_peak_price or 0),
+            )
+            self._record_closed_trade(
+                "stop_loss",
+                order,
+                extra={
+                    "trailing": bool(self.risk_manager.trailing_stop_loss),
+                    "peak_price": round(float(self.state.stop_loss_peak_price or 0), 4),
+                    "stop_price": round(stop_price, 4),
+                },
+            )
             self.bot.actual_trade_position = False
             self.bot.take_profit_index = 0
+            self.state.stop_loss_peak_price = 0.0
             self._save_state()
             return True
         return False
@@ -481,6 +522,7 @@ class TradingEngine:
             self._record_closed_trade("take_profit", order, extra={"tp_pct": tp_pct})
             if quantity >= self.bot.last_stock_account_balance * 0.99:
                 self.bot.actual_trade_position = False
+                self.state.stop_loss_peak_price = 0.0
             self._save_state()
             return True
         return False
@@ -568,6 +610,7 @@ class TradingEngine:
         if OrderExecutor.is_filled(order):
             self.bot.actual_trade_position = False
             self.bot.take_profit_index = 0
+            self.state.stop_loss_peak_price = 0.0
             self.state_store.log_order(self.bot.operation_code, order)
             self._record_closed_trade("sell", order)
         elif OrderExecutor.is_order_active(order):
@@ -604,6 +647,7 @@ class TradingEngine:
         print(f' - Posição atual: {"Comprado" if self.bot.actual_trade_position else "Vendido"}')
         print(f" - Balanço atual: {self.bot.last_stock_account_balance:.4f} ({self.bot.stock_code})")
         variation = self._log_asset_variation()
+        self._update_stop_loss_peak()
 
         if self._handle_stop_loss():
             print("\nSTOP LOSS finalizado.\n")

@@ -290,6 +290,7 @@ def _chart_position(state, holding: Optional[dict]) -> dict:
         "open": bool(state.actual_trade_position),
         "quantity": float(holding.get("quantity") or 0),
         "entry_price": float(state.last_buy_price or 0),
+        "peak_price": float(getattr(state, "stop_loss_peak_price", 0) or 0),
         "last_price": float(holding.get("price") or 0),
         "pnl_usd": holding.get("pnl_usd"),
         "pnl_pct": holding.get("pnl_pct"),

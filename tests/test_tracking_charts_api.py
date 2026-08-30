@@ -221,6 +221,23 @@ def test_charts_expose_levels_when_holding(wired):
     assert levels["entry"] == 100.0
     assert levels["take_profit"]["price"] == 107.0
     assert levels["stop_loss"]["price"] == 98.0
+    assert levels["stop_loss"]["trailing"] is False
+
+
+def test_charts_trail_stop_from_persisted_peak(wired):
+    wired["settings"].risk.trailing_stop_loss = True
+    state = wired["store"].load_state("BTCUSDT")
+    state.actual_trade_position = True
+    state.last_buy_price = 100.0
+    state.stop_loss_peak_price = 105.0
+    wired["store"].save_state(state)
+
+    payload = app.test_client().get(
+        "/api/tracking/charts?bars=30&operation_code=BTCUSDT"
+    ).get_json()
+    levels = payload["assets"][0]["levels"]
+    assert levels["stop_loss"]["price"] == pytest.approx(102.9)
+    assert levels["stop_loss"]["trailing"] is True
 
 
 def test_charts_aggregate_exposes_portfolio_levels(wired):

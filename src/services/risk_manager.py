@@ -20,11 +20,13 @@ class RiskManager:
         max_grid_open_orders: int = 10,
         circuit_breaker_errors: int = 5,
         circuit_breaker_pause_seconds: int = 300,
+        trailing_stop_loss: bool = False,
         state_store=None,
         operation_code: str = "",
     ):
         self.acceptable_loss_pct = acceptable_loss_pct / 100
         self.stop_loss_pct = stop_loss_pct / 100
+        self.trailing_stop_loss = bool(trailing_stop_loss)
         self.take_profit_at = take_profit_at
         self.take_profit_amount = take_profit_amount
         self.max_daily_loss_usdt = max_daily_loss_usdt
@@ -232,6 +234,7 @@ class RiskManager:
         max_grid_open_orders: int,
         circuit_breaker_errors: int,
         circuit_breaker_pause_seconds: int,
+        trailing_stop_loss: bool = False,
     ):
         """Update limits without resetting daily counters."""
         self.acceptable_loss_pct = acceptable_loss_pct / 100
@@ -245,24 +248,55 @@ class RiskManager:
         self.max_grid_open_orders = max_grid_open_orders
         self.circuit_breaker_errors = circuit_breaker_errors
         self.circuit_breaker_pause_seconds = circuit_breaker_pause_seconds
+        self.trailing_stop_loss = bool(trailing_stop_loss)
 
     def should_stop_trading_daily_loss(self) -> bool:
         self._reset_daily_counters_if_needed()
         return self._daily_loss_usdt >= self.max_daily_loss_usdt
+
+    @staticmethod
+    def ratchet_peak(
+        *,
+        position_open: bool,
+        last_buy_price: float,
+        peak_price: float,
+        mark_price: float,
+    ) -> float:
+        """Highest close seen while the position is open; 0 when flat."""
+        if not position_open:
+            return 0.0
+        return max(
+            float(last_buy_price or 0.0),
+            float(peak_price or 0.0),
+            float(mark_price or 0.0),
+        )
+
+    def stop_loss_price(
+        self, last_buy_price: float, peak_price: float = 0.0
+    ) -> float:
+        last_buy = float(last_buy_price or 0.0)
+        if last_buy <= 0:
+            return 0.0
+        anchor = last_buy
+        if self.trailing_stop_loss:
+            anchor = max(last_buy, float(peak_price or 0.0))
+        return anchor * (1 - self.stop_loss_pct)
 
     def check_stop_loss(
         self,
         stock_data,
         last_buy_price: float,
         position_open: bool,
+        peak_price: float = 0.0,
     ) -> bool:
         close_price = stock_data["close_price"].iloc[-1]
         weighted_price = stock_data["close_price"].iloc[-2]
-        stop_loss_price = last_buy_price * (1 - self.stop_loss_pct)
-        return (
+        stop_price = self.stop_loss_price(last_buy_price, peak_price)
+        return bool(
             position_open
-            and close_price < stop_loss_price
-            and weighted_price < stop_loss_price
+            and stop_price > 0
+            and close_price < stop_price
+            and weighted_price < stop_price
         )
 
     def check_take_profit(

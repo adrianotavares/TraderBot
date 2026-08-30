@@ -16,6 +16,7 @@ strategy:
 risk:
   acceptable_loss_pct: 1.5
   stop_loss_pct: 2.0
+  trailing_stop_loss: false
   take_profit:
     - at: 5
       amount: 30

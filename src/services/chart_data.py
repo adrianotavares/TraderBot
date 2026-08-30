@@ -278,6 +278,8 @@ def compute_levels(
     acceptable_loss_pct: float,
     take_profit: list,
     take_profit_index: int = 0,
+    trailing_stop_loss: bool = False,
+    peak_price: float = 0.0,
 ) -> Optional[dict]:
     """Entry, take profit and stop loss prices, or None when flat.
 
@@ -305,8 +307,16 @@ def compute_levels(
             }
 
     stop_pct = float(stop_loss_pct or 0)
+    trailing = bool(trailing_stop_loss)
+    anchor = entry
+    if trailing:
+        anchor = max(entry, float(peak_price or 0))
     levels["stop_loss"] = (
-        {"price": round(entry * (1 - stop_pct / 100), 8), "pct": stop_pct}
+        {
+            "price": round(anchor * (1 - stop_pct / 100), 8),
+            "pct": stop_pct,
+            "trailing": trailing,
+        }
         if stop_pct > 0
         else None
     )
@@ -454,6 +464,8 @@ def build_aggregate_chart_payload(
         acceptable_loss_pct=getattr(risk, "acceptable_loss_pct", 0),
         take_profit=getattr(risk, "take_profit", []) or [],
         take_profit_index=0,
+        trailing_stop_loss=getattr(risk, "trailing_stop_loss", False),
+        peak_price=position.get("peak_price") or 0,
     )
     return {
         "stock_code": "Portfólio",
@@ -553,6 +565,8 @@ def build_chart_payload(
         acceptable_loss_pct=getattr(risk, "acceptable_loss_pct", 0),
         take_profit=getattr(risk, "take_profit", []) or [],
         take_profit_index=take_profit_index,
+        trailing_stop_loss=getattr(risk, "trailing_stop_loss", False),
+        peak_price=position.get("peak_price") or 0,
     )
 
     return {

@@ -259,6 +259,7 @@ def build_replay_engine(
     fallback_activated: bool = False,
     regime_enabled: bool = False,
     stop_loss_pct: float = 2.0,
+    trailing_stop_loss: bool = False,
     max_daily_loss_usdt: float = 10_000.0,
 ):
     from core.trading_engine import TradingEngine
@@ -283,6 +284,7 @@ def build_replay_engine(
         take_profit_amount=[],
         max_daily_loss_usdt=max_daily_loss_usdt,
         max_trades_per_day=50,
+        trailing_stop_loss=trailing_stop_loss,
         state_store=store,
         operation_code=bot.operation_code,
     )
