@@ -1653,8 +1653,8 @@ body.page-tracking .impact-banner {
         flex-direction: column;
         align-items: center;
         justify-content: flex-start;
-        width: 72px;
-        min-width: 72px;
+        width: 62px;
+        min-width: 62px;
         height: 100vh;
         height: 100dvh;
         padding: 12px 8px;
