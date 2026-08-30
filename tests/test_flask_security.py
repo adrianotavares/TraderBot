@@ -127,6 +127,11 @@ def test_static_assets_are_public_so_login_page_is_styled(password_env):
     js = client.get("/static/js/theme.js")
     assert js.status_code == 200
     assert b"traderbot-theme" in js.data
+    assert b'[data-nav-pos="left"]' in response.data
+    assert b".nav-pos-switch" in response.data
+    nav_js = client.get("/static/js/nav.js")
+    assert nav_js.status_code == 200
+    assert b"traderbot-nav-pos" in nav_js.data
 
 
 def test_theme_switcher_is_on_login_and_pages(password_env):
@@ -146,6 +151,23 @@ def test_theme_switcher_is_on_login_and_pages(password_env):
     profit = client.get("/profit")
     assert profit.status_code == 200
     assert b'data-theme-option="light"' in profit.data
+
+
+def test_nav_position_switcher_is_on_pages_not_login(password_env):
+    client = app.test_client()
+    login = client.get("/login")
+    assert login.status_code == 200
+    assert b"data-nav-pos-option" not in login.data
+    assert b"js/nav.js" not in login.data
+    _login(client)
+    for path in ("/", "/profit", "/balance", "/config"):
+        body = client.get(path).get_data(as_text=True)
+        assert 'data-nav-pos-option="top"' in body
+        assert 'data-nav-pos-option="left"' in body
+        assert "js/nav.js" in body
+        assert 'class="nav-label">Tracking</span>' in body
+        assert "monitoring" in body
+        assert "view_sidebar" in body
 
 
 def test_login_success_grants_access(password_env):

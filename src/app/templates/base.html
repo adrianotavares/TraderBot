@@ -1,10 +1,11 @@
 <!DOCTYPE html>
-<html lang="pt" data-theme="light">
+<html lang="pt" data-theme="light" data-nav-pos="top">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>{% block title %}TraderBot{% endblock %}</title>
         <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+        <script src="{{ url_for('static', filename='js/nav.js') }}"></script>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link
@@ -24,31 +25,56 @@
         <header class="app-bar">
             <div class="brand">
                 <span class="material-symbols-outlined">candlestick_chart</span>
-                TraderBot
+                <span class="brand-label">TraderBot</span>
             </div>
-            <nav>
+            <nav aria-label="Páginas">
                 <a
                     href="{{ url_for('routes.dashboard') }}"
                     class="{{ 'active' if active_page == 'tracking' else '' }}"
-                    >Tracking</a
+                    title="Tracking"
+                    {% if active_page == 'tracking' %}aria-current="page"{% endif %}
                 >
+                    <span class="material-symbols-outlined nav-icon" aria-hidden="true"
+                        >monitoring</span
+                    >
+                    <span class="nav-label">Tracking</span>
+                </a>
                 <a
                     href="{{ url_for('routes.profit_page') }}"
                     class="{{ 'active' if active_page == 'profit' else '' }}"
-                    >Profit</a
+                    title="Profit"
+                    {% if active_page == 'profit' %}aria-current="page"{% endif %}
                 >
+                    <span class="material-symbols-outlined nav-icon" aria-hidden="true"
+                        >trending_up</span
+                    >
+                    <span class="nav-label">Profit</span>
+                </a>
                 <a
                     href="{{ url_for('routes.balance_page') }}"
                     class="{{ 'active' if active_page == 'balance' else '' }}"
-                    >Balance</a
+                    title="Balance"
+                    {% if active_page == 'balance' %}aria-current="page"{% endif %}
                 >
+                    <span class="material-symbols-outlined nav-icon" aria-hidden="true"
+                        >account_balance_wallet</span
+                    >
+                    <span class="nav-label">Balance</span>
+                </a>
                 <a
                     href="{{ url_for('routes.config_page') }}"
                     class="{{ 'active' if active_page == 'config' else '' }}"
-                    >Config</a
+                    title="Config"
+                    {% if active_page == 'config' %}aria-current="page"{% endif %}
                 >
+                    <span class="material-symbols-outlined nav-icon" aria-hidden="true"
+                        >settings</span
+                    >
+                    <span class="nav-label">Config</span>
+                </a>
             </nav>
             <div class="app-bar-end">
+                {% include "_nav_pos_switch.html" %}
                 {% include "_theme_switch.html" %}
                 <span
                     class="env-badge {{ environment }}"
