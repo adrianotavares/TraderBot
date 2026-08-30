@@ -58,6 +58,7 @@ from services.chart_data import (
     WARMUP_CANDLES,
     build_aggregate_chart_payload,
     build_chart_payload,
+    empty_indicators,
 )
 from services.market_data import MarketDataService
 from services.order_sync import DEFAULT_PROFIT_CUTOFF, sync_filled_orders_from_binance
@@ -305,6 +306,7 @@ def _empty_chart(asset, error: str) -> dict:
         "regime": [],
         "current_regime": None,
         "trailing_stop": [],
+        "indicators": empty_indicators(),
         "position": {},
         "levels": None,
         "markers": [],
@@ -418,6 +420,7 @@ def get_tracking_charts(
                     orders=orders,
                     strategy_main=settings.strategy.main,
                     strategy_args=settings.strategy.main_args,
+                    regime_config=settings.regime,
                     bars=int(bars),
                 )
             )

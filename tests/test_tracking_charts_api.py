@@ -79,6 +79,14 @@ def _settings(assets=None) -> TradingSettings:
             "acceptable_loss_pct": 1.5,
             "take_profit": [{"at": 7.0, "amount": 100.0}],
         },
+        regime={
+            "ema_fast": 20,
+            "ema_slow": 50,
+            "rsi_period": 14,
+            "rsi_low": 35.0,
+            "rsi_high": 65.0,
+            "adx_period": 14,
+        },
         timing={"candle_period": "4h"},
         assets=assets
         or [
@@ -170,6 +178,7 @@ def test_charts_todos_returns_aggregate_not_per_asset(wired):
     assert aggregate["stock_code"] == "Portfólio"
     assert len(aggregate["equity"]) > 0
     assert aggregate["regime"] == []
+    assert not aggregate.get("indicators")
 
 
 def test_charts_include_candles_regime_and_trailing_stop(wired):
@@ -182,6 +191,22 @@ def test_charts_include_candles_regime_and_trailing_stop(wired):
     assert asset["trailing_stop"]
     assert asset["regime"]
     assert asset["error"] is None
+    indicators = asset["indicators"]
+    candle_times = {candle["time"] for candle in asset["candles"]}
+    for key in ("sma", "ema_fast", "ema_slow", "volume", "rsi", "adx"):
+        assert key in indicators
+        assert {row["time"] for row in indicators[key]} <= candle_times
+    assert indicators["volume"]
+    assert indicators["sma"]
+    assert indicators["meta"] == {
+        "sma_period": 200,
+        "ema_fast": 20,
+        "ema_slow": 50,
+        "rsi_period": 14,
+        "rsi_low": 35.0,
+        "rsi_high": 65.0,
+        "adx_period": 14,
+    }
 
 
 def test_charts_fetch_warmup_beyond_the_charted_window(wired):
@@ -301,6 +326,9 @@ def test_charts_isolate_a_failing_symbol(monkeypatch, tmp_path):
     asset = response.get_json()["assets"][0]
     assert "binance is down" in asset["error"]
     assert asset["candles"] == []
+    assert asset["indicators"]["sma"] == []
+    assert asset["indicators"]["volume"] == []
+    assert "meta" in asset["indicators"]
 
 
 def test_charts_survive_a_portfolio_outage(monkeypatch, tmp_path, wired):

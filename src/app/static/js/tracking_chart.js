@@ -11,6 +11,17 @@
     var LWC = window.LightweightCharts;
     var TZ = "America/Sao_Paulo";
     var liveEntries = [];
+    var OVERLAY_STORAGE_KEY = "traderbot.chartOverlays";
+    var DEFAULT_OVERLAYS = {
+        sma: true,
+        volume: true,
+        rsi: true,
+        ema: false,
+        adx: false,
+    };
+    var MAIN_PANE_STRETCH = 6;
+    var INDICATOR_PANE_STRETCH = 1.5;
+    var HIDDEN_PANE_STRETCH = 0.0001;
 
     function cssVar(name, fallback) {
         var value = getComputedStyle(document.documentElement)
@@ -52,13 +63,126 @@
             up: cssVar("--md-up", "#1b7f3a"),
             down: cssVar("--md-down", "#b3261e"),
             info: cssVar("--md-info", "#1565c0"),
+            warn: cssVar("--md-warn", "#e65100"),
             entry: cssVar("--md-on-surface-variant", "#5c5c57"),
             grid: cssVar("--md-chart-grid", "#eceff1"),
             text: cssVar("--md-on-surface-variant", "#5c5c57"),
+            sma: cssVar("--md-chart-sma", "#7b1fa2"),
+            emaFast: cssVar("--md-chart-ema-fast", "#00838f"),
+            emaSlow: cssVar("--md-chart-ema-slow", "#5e35b1"),
+            rsi: cssVar("--md-chart-rsi", "#c2185b"),
+            adx: cssVar("--md-chart-adx", "#6d4c41"),
         };
     }
 
     var COLORS = readColors();
+
+    function normalizeOverlays(flags) {
+        var next = {
+            sma: DEFAULT_OVERLAYS.sma,
+            volume: DEFAULT_OVERLAYS.volume,
+            rsi: DEFAULT_OVERLAYS.rsi,
+            ema: DEFAULT_OVERLAYS.ema,
+            adx: DEFAULT_OVERLAYS.adx,
+        };
+        if (!flags || typeof flags !== "object") return next;
+        ["sma", "volume", "rsi", "ema", "adx"].forEach(function (key) {
+            if (typeof flags[key] === "boolean") next[key] = flags[key];
+        });
+        return next;
+    }
+
+    function loadOverlays() {
+        try {
+            var raw = localStorage.getItem(OVERLAY_STORAGE_KEY);
+            if (!raw) return normalizeOverlays(null);
+            return normalizeOverlays(JSON.parse(raw));
+        } catch (err) {
+            return normalizeOverlays(null);
+        }
+    }
+
+    function saveOverlays(flags) {
+        try {
+            localStorage.setItem(OVERLAY_STORAGE_KEY, JSON.stringify(flags));
+        } catch (err) {
+            // Private mode / quota — chips still work for this session.
+        }
+    }
+
+    var overlayFlags = loadOverlays();
+    saveOverlays(overlayFlags);
+
+    function overlayMeta(asset) {
+        return (asset && asset.indicators && asset.indicators.meta) || {};
+    }
+
+    function volumeBars(candles, volumes) {
+        var byTime = {};
+        (candles || []).forEach(function (candle) {
+            byTime[candle.time] = candle;
+        });
+        var up = hexToRgba(COLORS.up, 0.55);
+        var down = hexToRgba(COLORS.down, 0.55);
+        return (volumes || []).map(function (point) {
+            var candle = byTime[point.time];
+            var bull = candle ? candle.close >= candle.open : true;
+            return {
+                time: point.time,
+                value: point.value,
+                color: bull ? up : down,
+            };
+        });
+    }
+
+    function oscillatorScale() {
+        return function () {
+            return { priceRange: { minValue: 0, maxValue: 100 } };
+        };
+    }
+
+    function paneStretch(on) {
+        return on ? INDICATOR_PANE_STRETCH : HIDDEN_PANE_STRETCH;
+    }
+
+    function applyOverlayVisibility(handle) {
+        if (!handle || handle.mode !== "asset" || !handle.overlays) return;
+        var flags = overlayFlags;
+        handle.overlays.sma.applyOptions({ visible: !!flags.sma });
+        handle.overlays.emaFast.applyOptions({ visible: !!flags.ema });
+        handle.overlays.emaSlow.applyOptions({ visible: !!flags.ema });
+        handle.overlays.volume.applyOptions({ visible: !!flags.volume });
+        handle.overlays.rsi.applyOptions({ visible: !!flags.rsi });
+        handle.overlays.adx.applyOptions({ visible: !!flags.adx });
+        if (handle.overlayPanes) {
+            if (handle.overlayPanes.volume) {
+                handle.overlayPanes.volume.setStretchFactor(paneStretch(flags.volume));
+            }
+            if (handle.overlayPanes.rsi) {
+                handle.overlayPanes.rsi.setStretchFactor(paneStretch(flags.rsi));
+            }
+            if (handle.overlayPanes.adx) {
+                handle.overlayPanes.adx.setStretchFactor(paneStretch(flags.adx));
+            }
+        }
+        var panes = handle.chart.panes && handle.chart.panes();
+        if (panes && panes[0] && panes[0].setStretchFactor) {
+            panes[0].setStretchFactor(MAIN_PANE_STRETCH);
+        }
+    }
+
+    function refreshEntryOverlays(entry) {
+        var handle = entry.handle;
+        applyOverlayVisibility(handle);
+        if (handle.mode === "asset" && handle.lastAsset) {
+            renderLegend(
+                handle,
+                entry.card,
+                handle.lastAsset,
+                handle.lastPrecision || 2
+            );
+        }
+    }
 
     function chartLayoutOptions() {
         return {
@@ -90,6 +214,24 @@
         }
         if (handle.trailing) {
             handle.trailing.applyOptions({ color: COLORS.info });
+        }
+        if (handle.overlays) {
+            handle.overlays.sma.applyOptions({ color: COLORS.sma });
+            handle.overlays.emaFast.applyOptions({ color: COLORS.emaFast });
+            handle.overlays.emaSlow.applyOptions({ color: COLORS.emaSlow });
+            handle.overlays.rsi.applyOptions({ color: COLORS.rsi });
+            handle.overlays.adx.applyOptions({ color: COLORS.adx });
+            if (handle.lastAsset) {
+                var indicators = handle.lastAsset.indicators || {};
+                handle.overlays.volume.setData(
+                    volumeBars(handle.lastAsset.candles, indicators.volume)
+                );
+            }
+            if (handle.rsiBands) {
+                var bandColor = hexToRgba(COLORS.text, 0.45);
+                handle.rsiBands.low.applyOptions({ color: bandColor });
+                handle.rsiBands.high.applyOptions({ color: bandColor });
+            }
         }
         if (handle.equity) {
             handle.equity.applyOptions({
@@ -304,18 +446,115 @@
             crosshairMarkerVisible: false,
         });
 
-        return {
+        var sma = chart.addSeries(LWC.LineSeries, {
+            color: COLORS.sma,
+            lineWidth: 2,
+            lastValueVisible: false,
+            priceLineVisible: false,
+            crosshairMarkerVisible: false,
+        });
+        var emaFast = chart.addSeries(LWC.LineSeries, {
+            color: COLORS.emaFast,
+            lineWidth: 1,
+            lastValueVisible: false,
+            priceLineVisible: false,
+            crosshairMarkerVisible: false,
+        });
+        var emaSlow = chart.addSeries(LWC.LineSeries, {
+            color: COLORS.emaSlow,
+            lineWidth: 1,
+            lastValueVisible: false,
+            priceLineVisible: false,
+            crosshairMarkerVisible: false,
+        });
+
+        // Volume / RSI / ADX sit on extra panes (LWC v5 addPane). Hidden
+        // overlays keep their series mounted and collapse pane stretch so
+        // toggling does not remount or reset the visible time range.
+        var volumePane = chart.addPane(true);
+        var rsiPane = chart.addPane(true);
+        var adxPane = chart.addPane(true);
+
+        var volume = volumePane.addSeries(LWC.HistogramSeries, {
+            priceFormat: { type: "volume" },
+            lastValueVisible: false,
+            priceLineVisible: false,
+        });
+        volume.priceScale().applyOptions({
+            scaleMargins: { top: 0.15, bottom: 0 },
+        });
+
+        var rsi = rsiPane.addSeries(LWC.LineSeries, {
+            color: COLORS.rsi,
+            lineWidth: 1,
+            lastValueVisible: false,
+            priceLineVisible: false,
+            priceFormat: { type: "price", precision: 2, minMove: 0.01 },
+            autoscaleInfoProvider: oscillatorScale(),
+        });
+        rsi.priceScale().applyOptions({
+            scaleMargins: { top: 0.12, bottom: 0.12 },
+        });
+        var bandColor = hexToRgba(COLORS.text, 0.45);
+        var rsiLow = rsi.createPriceLine({
+            price: 40,
+            color: bandColor,
+            lineWidth: 1,
+            lineStyle: LWC.LineStyle.Dashed,
+            axisLabelVisible: false,
+            title: "",
+        });
+        var rsiHigh = rsi.createPriceLine({
+            price: 60,
+            color: bandColor,
+            lineWidth: 1,
+            lineStyle: LWC.LineStyle.Dashed,
+            axisLabelVisible: false,
+            title: "",
+        });
+
+        var adx = adxPane.addSeries(LWC.LineSeries, {
+            color: COLORS.adx,
+            lineWidth: 1,
+            lastValueVisible: false,
+            priceLineVisible: false,
+            priceFormat: { type: "price", precision: 2, minMove: 0.01 },
+            autoscaleInfoProvider: oscillatorScale(),
+        });
+        adx.priceScale().applyOptions({
+            scaleMargins: { top: 0.12, bottom: 0.12 },
+        });
+
+        var handle = {
             chart: chart,
             mode: "asset",
             candles: candles,
             bands: bands,
             trailing: trailing,
+            overlays: {
+                sma: sma,
+                emaFast: emaFast,
+                emaSlow: emaSlow,
+                volume: volume,
+                rsi: rsi,
+                adx: adx,
+            },
+            overlayPanes: {
+                volume: volumePane,
+                rsi: rsiPane,
+                adx: adxPane,
+            },
+            rsiBands: { low: rsiLow, high: rsiHigh },
             markers: LWC.createSeriesMarkers(candles, []),
             priceLines: [],
             fitted: false,
             lastTime: null,
             windowSeconds: null,
+            lastAsset: null,
+            lastPrecision: 2,
         };
+        applyOverlayVisibility(handle);
+        return handle;
     }
 
     function buildEquityChart(canvas) {
@@ -409,6 +648,7 @@
     function colorForRole(role) {
         if (role === "tp") return COLORS.up;
         if (role === "sl") return COLORS.down;
+        if (role === "sr") return COLORS.warn;
         return COLORS.entry;
     }
 
@@ -449,6 +689,8 @@
         if ((asset.trailing_stop || []).length && handle.mode === "asset") {
             items.push({ cls: "trail", text: "Trailing stop (ATR)" });
         }
+        appendOverlayLegend(handle, items, asset);
+        appendChannelItems(handle, items, asset, precision);
 
         items.forEach(function (item) {
             card.legend.appendChild(
@@ -504,6 +746,83 @@
                     formatPrice(levels.stop_loss.price, precision),
             });
         }
+    }
+
+    function appendOverlayLegend(handle, items, asset) {
+        if (handle.mode !== "asset") return;
+        var flags = overlayFlags;
+        var meta = overlayMeta(asset);
+        if (flags.sma) {
+            items.push({
+                cls: "sma",
+                text: "SMA " + (meta.sma_period || ""),
+            });
+        }
+        if (flags.ema) {
+            items.push({
+                cls: "ema-fast",
+                text: "EMA " + (meta.ema_fast || ""),
+            });
+            items.push({
+                cls: "ema-slow",
+                text: "EMA " + (meta.ema_slow || ""),
+            });
+        }
+        if (flags.volume) {
+            items.push({ cls: "volume", text: "Volume" });
+        }
+        if (flags.rsi) {
+            items.push({
+                cls: "rsi",
+                text: "RSI " + (meta.rsi_period || ""),
+            });
+        }
+        if (flags.adx) {
+            items.push({
+                cls: "adx",
+                text: "ADX " + (meta.adx_period || ""),
+            });
+        }
+    }
+
+    function appendChannelItems(handle, items, asset, precision) {
+        if (handle.mode !== "asset") return;
+        var current = asset.current_regime;
+        if (!current) return;
+        if (current.support != null && isFinite(current.support)) {
+            addPriceLine(
+                handle,
+                current.support,
+                "sr",
+                "Suporte",
+                LWC.LineStyle.Dashed
+            );
+            items.push({
+                cls: "sr",
+                text: "Suporte " + formatPrice(current.support, precision),
+            });
+        }
+        if (current.resistance != null && isFinite(current.resistance)) {
+            addPriceLine(
+                handle,
+                current.resistance,
+                "sr",
+                "Resistência",
+                LWC.LineStyle.Dashed
+            );
+            items.push({
+                cls: "sr",
+                text: "Resistência " + formatPrice(current.resistance, precision),
+            });
+        }
+    }
+
+    function syncRsiBands(handle, meta) {
+        if (!handle.rsiBands || !meta) return;
+        var low = Number(meta.rsi_low);
+        var high = Number(meta.rsi_high);
+        if (isFinite(low)) handle.rsiBands.low.applyOptions({ price: low });
+        if (isFinite(high)) handle.rsiBands.high.applyOptions({ price: high });
     }
 
     function renderHeader(card, asset, precision) {
@@ -589,6 +908,22 @@
         handle.trailing.setData(asset.trailing_stop || []);
         handle.markers.setMarkers((asset.markers || []).map(markerFor));
 
+        var indicators = asset.indicators || {};
+        if (handle.overlays) {
+            handle.overlays.sma.setData(indicators.sma || []);
+            handle.overlays.emaFast.setData(indicators.ema_fast || []);
+            handle.overlays.emaSlow.setData(indicators.ema_slow || []);
+            handle.overlays.volume.setData(
+                volumeBars(asset.candles, indicators.volume)
+            );
+            handle.overlays.rsi.setData(indicators.rsi || []);
+            handle.overlays.adx.setData(indicators.adx || []);
+            syncRsiBands(handle, indicators.meta);
+            applyOverlayVisibility(handle);
+        }
+
+        handle.lastAsset = asset;
+        handle.lastPrecision = precision;
         renderHeader(card, asset, precision);
         renderLegend(handle, card, asset, precision);
 
@@ -622,6 +957,8 @@
 
         handle.equity.setData(series);
         handle.lastTime = series[series.length - 1].time;
+        handle.lastAsset = asset;
+        handle.lastPrecision = precision;
         renderHeader(card, asset, precision);
         renderLegend(handle, card, asset, precision);
 
@@ -674,6 +1011,23 @@
             entry.handle.windowSeconds = seconds;
             applyTimeWindow(entry.handle);
             entry.handle.fitted = true;
+        },
+
+        getOverlays: function () {
+            return {
+                sma: overlayFlags.sma,
+                volume: overlayFlags.volume,
+                rsi: overlayFlags.rsi,
+                ema: overlayFlags.ema,
+                adx: overlayFlags.adx,
+            };
+        },
+
+        /** Show/hide overlays on already-mounted charts without remounting. */
+        setOverlays: function (flags) {
+            overlayFlags = normalizeOverlays(flags);
+            saveOverlays(overlayFlags);
+            liveEntries.forEach(refreshEntryOverlays);
         },
 
         dispose: function (entry) {

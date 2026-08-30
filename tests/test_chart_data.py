@@ -16,7 +16,9 @@ from services.chart_data import (
     candle_times,
     candles_to_series,
     compute_levels,
+    empty_indicators,
     equity_series,
+    indicator_series,
     is_closed,
     order_markers,
     parse_iso_seconds,
@@ -345,6 +347,155 @@ def test_trailing_stop_series_skips_warmup_nans():
 
 def test_trailing_stop_series_handles_empty():
     assert trailing_stop_series(pd.DataFrame(), []) == []
+
+
+# --- chart overlays -------------------------------------------------------
+
+
+class _Regime:
+    ema_fast = 20
+    ema_slow = 50
+    rsi_period = 14
+    rsi_low = 35.0
+    rsi_high = 65.0
+    adx_period = 14
+
+
+def test_indicator_series_aligns_to_candle_window():
+    frame = _frame(80)
+    window = candle_times(frame)[-20:]
+    series = indicator_series(
+        frame,
+        window,
+        regime_config=_Regime(),
+        strategy_args={"trend_sma_period": 10},
+    )
+    candle_set = set(window)
+    for key in ("sma", "ema_fast", "ema_slow", "volume", "rsi", "adx"):
+        times = [row["time"] for row in series[key]]
+        assert times == sorted(times)
+        assert set(times) <= candle_set
+    assert [row["time"] for row in series["volume"]] == window
+    assert [row["time"] for row in series["sma"]] == window
+    assert series["meta"] == {
+        "sma_period": 10,
+        "ema_fast": 20,
+        "ema_slow": 50,
+        "rsi_period": 14,
+        "rsi_low": 35.0,
+        "rsi_high": 65.0,
+        "adx_period": 14,
+    }
+
+
+def test_indicator_series_sma_uses_given_period():
+    frame = _frame(80, step=0.4)
+    window = candle_times(frame)[-15:]
+    series = indicator_series(
+        frame,
+        window,
+        strategy_args={"trend_sma_period": 10},
+    )
+    close = pd.to_numeric(frame["close_price"], errors="coerce")
+    expected = close.rolling(window=10, min_periods=10).mean()
+    times = candle_times(frame)
+    by_time = {row["time"]: row["value"] for row in series["sma"]}
+    for index, time in enumerate(times):
+        if time not in window:
+            continue
+        value = expected.iloc[index]
+        if pd.isna(value):
+            assert time not in by_time
+        else:
+            assert by_time[time] == round(float(value), 8)
+
+
+def test_indicator_series_omits_sma_warmup_nans():
+    frame = _frame(80)
+    window = candle_times(frame)[-20:]
+    series = indicator_series(
+        frame,
+        window,
+        strategy_args={"trend_sma_period": 200},
+    )
+    assert series["sma"] == []
+    assert series["volume"]
+    assert series["meta"]["sma_period"] == 200
+
+
+def test_indicator_series_empty_frame_has_empty_series():
+    series = indicator_series(
+        pd.DataFrame(),
+        [],
+        regime_config=_Regime(),
+        strategy_args={"trend_sma_period": 10},
+    )
+    assert series["sma"] == []
+    assert series["ema_fast"] == []
+    assert series["volume"] == []
+    assert series["rsi"] == []
+    assert series["adx"] == []
+    assert series["meta"]["sma_period"] == 10
+
+
+def test_empty_indicators_has_expected_keys():
+    payload = empty_indicators()
+    assert set(payload) == {
+        "sma",
+        "ema_fast",
+        "ema_slow",
+        "volume",
+        "rsi",
+        "adx",
+        "meta",
+    }
+    assert payload["meta"]["sma_period"] == 200
+
+
+def test_build_chart_payload_includes_indicators(detector, store):
+    frame = _frame(80)
+    payload = build_chart_payload(
+        frame,
+        stock_code="BTC",
+        operation_code="BTCUSDT",
+        candle_period="4h",
+        risk=_Risk(),
+        detector=detector,
+        store=store,
+        strategy_main="atr_trend",
+        strategy_args={"trend_sma_period": 10, "atr_period": 14, "atr_multiplier": 2.5},
+        regime_config=_Regime(),
+        bars=20,
+        now=candle_times(frame)[-1] + PERIOD,
+    )
+    indicators = payload["indicators"]
+    candle_times_set = {candle["time"] for candle in payload["candles"]}
+    assert len(payload["candles"]) == 20
+    assert [row["time"] for row in indicators["sma"]] == [c["time"] for c in payload["candles"]]
+    assert set(row["time"] for row in indicators["rsi"]) <= candle_times_set
+    assert indicators["meta"]["rsi_low"] == 35.0
+    assert indicators["meta"]["rsi_high"] == 65.0
+    rsi_value = indicators["rsi"][-1]["value"]
+    assert rsi_value == round(rsi_value, 2)
+
+
+def test_build_chart_payload_empty_frame_has_empty_indicators():
+    payload = build_chart_payload(
+        pd.DataFrame(),
+        stock_code="BTC",
+        operation_code="BTCUSDT",
+        candle_period="4h",
+        risk=_Risk(),
+        bars=10,
+    )
+    indicators = payload["indicators"]
+    assert indicators["sma"] == []
+    assert indicators["volume"] == []
+    assert indicators["rsi"] == []
+    assert indicators["adx"] == []
+    assert indicators["ema_fast"] == []
+    assert indicators["ema_slow"] == []
+    assert indicators["meta"]["sma_period"] == 200
 
 
 # --- levels ---------------------------------------------------------------

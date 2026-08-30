@@ -6,13 +6,17 @@ Lightweight Charts expects. `MarketDataService.normalize_klines` localizes
 browser is responsible for formatting the axis in the user's timezone.
 """
 
+import math
 from bisect import bisect_right
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 import pandas as pd
 
+from indicators.adx import adx
 from indicators.atr import atr, compute_trailing_stop
+from indicators.ema import ema
+from indicators.rsi import rsi
 
 _PERIOD_UNIT_SECONDS = {"m": 60, "h": 3600, "d": 86400, "w": 604800}
 
@@ -268,6 +272,148 @@ def trailing_stop_series(
             continue
         series.append({"time": time, "value": round(float(value), 8)})
     return series
+
+
+DEFAULT_SMA_PERIOD = 200
+DEFAULT_EMA_FAST = 20
+DEFAULT_EMA_SLOW = 50
+DEFAULT_RSI_PERIOD = 14
+DEFAULT_RSI_LOW = 40.0
+DEFAULT_RSI_HIGH = 60.0
+DEFAULT_ADX_PERIOD = 14
+
+
+def default_indicator_meta() -> dict:
+    return {
+        "sma_period": DEFAULT_SMA_PERIOD,
+        "ema_fast": DEFAULT_EMA_FAST,
+        "ema_slow": DEFAULT_EMA_SLOW,
+        "rsi_period": DEFAULT_RSI_PERIOD,
+        "rsi_low": DEFAULT_RSI_LOW,
+        "rsi_high": DEFAULT_RSI_HIGH,
+        "adx_period": DEFAULT_ADX_PERIOD,
+    }
+
+
+def empty_indicators(meta: Optional[dict] = None) -> dict:
+    """Empty overlay payload so the Tracking frontend can always read the keys."""
+    return {
+        "sma": [],
+        "ema_fast": [],
+        "ema_slow": [],
+        "volume": [],
+        "rsi": [],
+        "adx": [],
+        "meta": meta or default_indicator_meta(),
+    }
+
+
+def _config_value(source: Any, key: str, default: Any) -> Any:
+    if source is None:
+        return default
+    if isinstance(source, dict):
+        value = source.get(key, default)
+    else:
+        value = getattr(source, key, default)
+    return default if value is None else value
+
+
+def _int_config(source: Any, key: str, default: int) -> int:
+    try:
+        value = int(_config_value(source, key, default))
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+def _float_config(source: Any, key: str, default: float) -> float:
+    try:
+        return float(_config_value(source, key, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def indicator_meta(
+    *,
+    regime_config: Any = None,
+    strategy_args: Optional[dict] = None,
+) -> dict:
+    """Periods and RSI bands from live YAML (`regime` / `strategy.main_args`)."""
+    return {
+        "sma_period": _int_config(strategy_args, "trend_sma_period", DEFAULT_SMA_PERIOD),
+        "ema_fast": _int_config(regime_config, "ema_fast", DEFAULT_EMA_FAST),
+        "ema_slow": _int_config(regime_config, "ema_slow", DEFAULT_EMA_SLOW),
+        "rsi_period": _int_config(regime_config, "rsi_period", DEFAULT_RSI_PERIOD),
+        "rsi_low": round(_float_config(regime_config, "rsi_low", DEFAULT_RSI_LOW), 2),
+        "rsi_high": round(_float_config(regime_config, "rsi_high", DEFAULT_RSI_HIGH), 2),
+        "adx_period": _int_config(regime_config, "adx_period", DEFAULT_ADX_PERIOD),
+    }
+
+
+def _points_from_series(
+    times: list[int],
+    values: pd.Series,
+    window: list[int],
+    *,
+    decimals: int,
+) -> list[dict]:
+    """Vectorized indicator → `{time, value}` on `window`, skipping NaN/inf."""
+    if values is None or len(values) == 0 or not window:
+        return []
+    wanted = set(window)
+    series = []
+    for index, time in enumerate(times):
+        if time not in wanted or index >= len(values):
+            continue
+        value = values.iloc[index]
+        if pd.isna(value):
+            continue
+        number = float(value)
+        if not math.isfinite(number):
+            continue
+        series.append({"time": time, "value": round(number, decimals)})
+    return series
+
+
+def indicator_series(
+    stock_data: pd.DataFrame,
+    window: list[int],
+    *,
+    regime_config: Any = None,
+    strategy_args: Optional[dict] = None,
+) -> dict:
+    """SMA / EMA / volume / RSI / ADX for the charted window.
+
+    Computed once over the full warmup frame (same pattern as
+    `trailing_stop_series`), then filtered to `window`. Toggles live on the
+    client; the payload always includes every series.
+    """
+    meta = indicator_meta(regime_config=regime_config, strategy_args=strategy_args)
+    if stock_data is None or len(stock_data) == 0 or not window:
+        return empty_indicators(meta)
+
+    times = candle_times(stock_data)
+    close = pd.to_numeric(stock_data["close_price"], errors="coerce")
+    sma_period = int(meta["sma_period"])
+    sma_values = close.rolling(window=sma_period, min_periods=sma_period).mean()
+    ema_fast_values = ema(close, int(meta["ema_fast"]))
+    ema_slow_values = ema(close, int(meta["ema_slow"]))
+    rsi_values = rsi(close, int(meta["rsi_period"]), False)
+    adx_values = adx(stock_data, int(meta["adx_period"]))
+    if "volume" in stock_data.columns:
+        volume_values = pd.to_numeric(stock_data["volume"], errors="coerce")
+    else:
+        volume_values = pd.Series(dtype=float)
+
+    return {
+        "sma": _points_from_series(times, sma_values, window, decimals=8),
+        "ema_fast": _points_from_series(times, ema_fast_values, window, decimals=8),
+        "ema_slow": _points_from_series(times, ema_slow_values, window, decimals=8),
+        "volume": _points_from_series(times, volume_values, window, decimals=8),
+        "rsi": _points_from_series(times, rsi_values, window, decimals=2),
+        "adx": _points_from_series(times, adx_values, window, decimals=2),
+        "meta": meta,
+    }
 
 
 def compute_levels(
@@ -528,6 +674,7 @@ def build_chart_payload(
     orders=None,
     strategy_main: str = "",
     strategy_args: Optional[dict] = None,
+    regime_config: Any = None,
     bars: int = DEFAULT_BARS,
     now: Optional[int] = None,
     max_backfill: int = MAX_BACKFILL_PER_REQUEST,
@@ -557,6 +704,13 @@ def build_chart_payload(
             atr_multiplier=float(args.get("atr_multiplier", 2.5)),
         )
 
+    indicators = indicator_series(
+        stock_data,
+        window,
+        regime_config=regime_config,
+        strategy_args=strategy_args,
+    )
+
     position = position or {}
     levels = compute_levels(
         entry_price=position.get("entry_price") or 0,
@@ -576,6 +730,7 @@ def build_chart_payload(
         "regime": regime,
         "current_regime": current_regime,
         "trailing_stop": trailing,
+        "indicators": indicators,
         "position": position,
         "levels": levels,
         "markers": order_markers(orders, operation_code, window),
