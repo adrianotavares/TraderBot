@@ -146,3 +146,43 @@ def test_replay_bot_fields_are_engine_state(tmp_path):
     assert loaded.last_buy_price == pytest.approx(123.45)
     assert loaded.last_trade_decision is True
     assert loaded.take_profit_index == 2
+
+
+def test_replay_dust_without_entry_does_not_crash_take_profit(tmp_path):
+    store = StateStore(tmp_path / "replay.db")
+    data = _ohlc(5, last_price=683.0, prev_price=680.0)
+    bot, engine = build_replay_engine(
+        data,
+        store=store,
+        quote_balance=1000.0,
+        base_balance=0.003,
+        main_strategy=lambda **_k: None,
+        regime_enabled=False,
+    )
+    engine.risk_manager.take_profit_at = [3.0]
+    engine.risk_manager.take_profit_amount = [100.0]
+    engine.bootstrap()
+    bot.last_buy_price = 0.0
+    engine.execute()
+    assert bot.actual_trade_position is False
+    assert bot.broker.orders == []
+
+
+def test_replay_open_position_without_entry_skips_take_profit(tmp_path):
+    store = StateStore(tmp_path / "replay.db")
+    data = _ohlc(5, last_price=110.0, prev_price=110.0)
+    bot, engine = build_replay_engine(
+        data,
+        store=store,
+        quote_balance=0.0,
+        base_balance=0.1,
+        main_strategy=lambda **_k: None,
+        regime_enabled=False,
+    )
+    engine.risk_manager.take_profit_at = [3.0]
+    engine.risk_manager.take_profit_amount = [100.0]
+    engine.bootstrap()
+    bot.last_buy_price = 0.0
+    engine.execute()
+    assert bot.actual_trade_position is True
+    assert bot.broker.orders == []

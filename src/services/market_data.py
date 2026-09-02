@@ -150,8 +150,19 @@ class MarketDataService:
                 return float(stock["free"]) + float(stock["locked"])
         return 0.0
 
-    def is_position_open(self, balance: float, step_size: float) -> bool:
-        return balance >= step_size
+    @staticmethod
+    def is_position_open(
+        balance: float,
+        step_size: float,
+        mark_price: float = 0.0,
+        min_notional: float = 0.0,
+    ) -> bool:
+        """True when the lot clears LOT_SIZE and, when known, minNotional."""
+        if balance < step_size:
+            return False
+        if min_notional > 0 and mark_price > 0 and balance * mark_price < min_notional:
+            return False
+        return True
 
     @staticmethod
     def get_last_fill_price(orders: list, side: str) -> float:

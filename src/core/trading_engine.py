@@ -77,6 +77,7 @@ class TradingEngine:
             self.bot.open_orders = self.bot.getOpenOrders()
             self.bot.last_buy_price = self.bot.getLastBuyPrice(verbose)
             self.bot.last_sell_price = self.bot.getLastSellPrice(verbose)
+            self._ignore_dust_position()
             if not self.bot.actual_trade_position:
                 self.bot.take_profit_index = 0
                 self.state.stop_loss_peak_price = 0.0
@@ -84,6 +85,31 @@ class TradingEngine:
             self.risk_manager.record_api_error()
             logging.error("Data update failed for %s: %s", self.bot.operation_code, e)
             raise
+
+    def _ignore_dust_position(self) -> None:
+        """Treat leftover lots below minNotional as flat so TP/SL/strategy can run."""
+        if not self.bot.actual_trade_position:
+            return
+        qty = float(self.bot.last_stock_account_balance or 0)
+        step = float(getattr(self.bot, "step_size", 0) or 0)
+        mark = self._current_mark_price()
+        min_notional = float(getattr(self.bot, "min_notional", 0) or 0)
+        if MarketDataService.is_position_open(
+            qty, step, mark_price=mark, min_notional=min_notional
+        ):
+            return
+        log_event(
+            logging.INFO,
+            "Dust balance ignored as open position",
+            event="dust_position_ignored",
+            operation_code=self.bot.operation_code,
+            stock_code=getattr(self.bot, "stock_code", ""),
+            quantity=qty,
+            mark_price=round(mark, 4) if mark else 0,
+            notional=round(qty * mark, 4) if mark else 0,
+            min_notional=min_notional,
+        )
+        self.bot.actual_trade_position = False
 
     def _quote_balance(self) -> float:
         return self.market_data.get_account_balance(

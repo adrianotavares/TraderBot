@@ -219,7 +219,7 @@ class BinanceTraderBot(PersistedTradeFields):
         )
 
     def getActualTradePosition(self):
-        return self.market_data.is_position_open(
+        return MarketDataService.is_position_open(
             self.last_stock_account_balance, self.step_size
         )
 

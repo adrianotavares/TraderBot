@@ -285,6 +285,22 @@ def _closes(*prices):
     return pd.DataFrame({"close_price": list(prices)})
 
 
+def test_take_profit_skips_when_entry_price_is_missing(risk_manager):
+    assert (
+        risk_manager.check_take_profit(_closes(110.0, 110.0), 0.0, True, 0, 1.0)
+        is None
+    )
+
+
+def test_take_profit_triggers_when_variation_hits_level(risk_manager):
+    result = risk_manager.check_take_profit(_closes(111.0, 111.0), 100.0, True, 0, 2.0)
+    assert result is not None
+    qty, tp_pct, new_index = result
+    assert qty == pytest.approx(1.0)
+    assert tp_pct == 10
+    assert new_index == 1
+
+
 def test_stop_loss_stays_fixed_on_entry_when_trailing_off():
     risk = RiskManager(
         acceptable_loss_pct=1.0,

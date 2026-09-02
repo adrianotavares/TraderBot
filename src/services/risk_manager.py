@@ -309,8 +309,11 @@ class RiskManager:
     ) -> Optional[tuple[float, float, int]]:
         if not position_open or take_profit_index >= len(self.take_profit_at):
             return None
+        last_buy = float(last_buy_price or 0)
+        if last_buy <= 0:
+            return None
         close_price = stock_data["close_price"].iloc[-1]
-        variation = self.get_price_change_pct(last_buy_price, close_price)
+        variation = self.get_price_change_pct(last_buy, close_price)
         tp_pct = self.take_profit_at[take_profit_index]
         tp_amount = self.take_profit_amount[take_profit_index]
         if tp_pct > 0 and round(variation, 2) >= round(tp_pct, 2):
