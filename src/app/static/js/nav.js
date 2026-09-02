@@ -8,6 +8,9 @@
 
     var KEY = "traderbot-nav-pos";
     var root = document.documentElement;
+    var ICONS = { top: "toolbar", left: "view_sidebar" };
+    var LABELS = { top: "Menu no topo", left: "Menu à esquerda" };
+    var TITLES = { top: "Topo", left: "Esquerda" };
 
     function normalize(pos) {
         return pos === "left" ? "left" : "top";
@@ -27,10 +30,14 @@
 
     function syncButtons() {
         var pos = current();
-        document.querySelectorAll("[data-nav-pos-option]").forEach(function (btn) {
-            var on = btn.getAttribute("data-nav-pos-option") === pos;
-            btn.classList.toggle("active", on);
-            btn.setAttribute("aria-pressed", on ? "true" : "false");
+        document.querySelectorAll("[data-nav-pos-toggle]").forEach(function (btn) {
+            btn.setAttribute("aria-pressed", pos === "left" ? "true" : "false");
+            btn.setAttribute("aria-label", LABELS[pos]);
+            btn.setAttribute("title", TITLES[pos]);
+            var icon = btn.querySelector(".material-symbols-outlined");
+            if (icon) {
+                icon.textContent = ICONS[pos];
+            }
         });
     }
 
@@ -66,9 +73,9 @@
     apply(stored(), false);
 
     function bind() {
-        document.querySelectorAll("[data-nav-pos-option]").forEach(function (btn) {
+        document.querySelectorAll("[data-nav-pos-toggle]").forEach(function (btn) {
             btn.addEventListener("click", function () {
-                apply(btn.getAttribute("data-nav-pos-option"));
+                apply(current() === "left" ? "top" : "left");
             });
         });
         syncButtons();

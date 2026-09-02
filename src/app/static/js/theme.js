@@ -7,6 +7,8 @@
 
     var KEY = "traderbot-theme";
     var root = document.documentElement;
+    var ICONS = { light: "light_mode", dark: "dark_mode" };
+    var LABELS = { light: "Lights", dark: "Dark" };
 
     function normalize(theme) {
         return theme === "dark" ? "dark" : "light";
@@ -26,10 +28,14 @@
 
     function syncButtons() {
         var theme = current();
-        document.querySelectorAll("[data-theme-option]").forEach(function (btn) {
-            var on = btn.getAttribute("data-theme-option") === theme;
-            btn.classList.toggle("active", on);
-            btn.setAttribute("aria-pressed", on ? "true" : "false");
+        document.querySelectorAll("[data-theme-toggle]").forEach(function (btn) {
+            btn.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
+            btn.setAttribute("aria-label", LABELS[theme]);
+            btn.setAttribute("title", LABELS[theme]);
+            var icon = btn.querySelector(".material-symbols-outlined");
+            if (icon) {
+                icon.textContent = ICONS[theme];
+            }
         });
     }
 
@@ -54,9 +60,9 @@
     apply(stored(), false);
 
     function bind() {
-        document.querySelectorAll("[data-theme-option]").forEach(function (btn) {
+        document.querySelectorAll("[data-theme-toggle]").forEach(function (btn) {
             btn.addEventListener("click", function () {
-                apply(btn.getAttribute("data-theme-option"));
+                apply(current() === "dark" ? "light" : "dark");
             });
         });
         syncButtons();

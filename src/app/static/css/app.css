@@ -193,43 +193,24 @@ nav a.active .nav-icon {
 .chrome-switch,
 .theme-switch {
     display: inline-flex;
-    align-items: stretch;
-    border: 1px solid var(--md-outline);
-    border-radius: 20px;
-    overflow: hidden;
-    background: var(--md-surface);
-}
-
-.chrome-option,
-.theme-option {
-    border: none;
-    background: transparent;
-    color: var(--md-on-surface-variant);
-    display: inline-flex;
     align-items: center;
     justify-content: center;
+    border: 1px solid var(--md-outline);
+    border-radius: 20px;
+    background: var(--md-surface);
+    color: var(--md-on-surface-variant);
     padding: 6px 8px;
     cursor: pointer;
 }
 
-.chrome-option .material-symbols-outlined,
-.theme-option .material-symbols-outlined {
+.chrome-switch .material-symbols-outlined,
+.theme-switch .material-symbols-outlined {
     font-size: 18px;
-}
-
-.chrome-option.active,
-.theme-option.active {
-    background: var(--md-primary);
-    color: var(--md-on-primary);
-}
-
-.chrome-option.active .material-symbols-outlined,
-.theme-option.active .material-symbols-outlined {
     font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
 }
 
-.chrome-option:hover:not(.active),
-.theme-option:hover:not(.active) {
+.chrome-switch:hover,
+.theme-switch:hover {
     background: var(--md-nav-hover);
     color: var(--md-primary);
 }
@@ -1717,7 +1698,7 @@ body.page-tracking .impact-banner {
     }
 
     html[data-nav-pos="left"] .chrome-switch {
-        flex-direction: column;
+        padding: 6px;
         border-radius: 12px;
     }
 
