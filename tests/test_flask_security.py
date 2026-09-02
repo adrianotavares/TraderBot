@@ -66,11 +66,13 @@ def test_weak_config_warning_targets_token_without_password():
 def test_protected_paths():
     assert is_protected_path("/api/logs")
     assert is_protected_path("/api/portfolio")
+    assert is_protected_path("/api/market")
     assert is_protected_path("/update-config")
     assert is_protected_path("/get-config")
     assert not is_protected_path("/")
     assert not is_protected_path("/profit")
     assert not is_protected_path("/balance")
+    assert not is_protected_path("/market")
 
 
 def test_tokens_match():
@@ -91,14 +93,14 @@ def test_token_is_never_rendered_in_html(monkeypatch):
     monkeypatch.setenv("FLASK_TOKEN", "token-que-nao-deve-vazar")
     monkeypatch.delenv("DASHBOARD_PASSWORD_HASH", raising=False)
     client = app.test_client()
-    for path in ("/", "/profit", "/config", "/balance"):
+    for path in ("/", "/profit", "/config", "/balance", "/market"):
         body = client.get(path).get_data(as_text=True)
         assert "token-que-nao-deve-vazar" not in body
 
 
 def test_html_pages_require_login(password_env):
     client = app.test_client()
-    for path in ("/", "/profit", "/config", "/balance"):
+    for path in ("/", "/profit", "/config", "/balance", "/market"):
         response = client.get(path)
         assert response.status_code == 302
         assert "/login" in response.headers["Location"]
@@ -107,6 +109,7 @@ def test_html_pages_require_login(password_env):
 def test_api_requires_login_with_401(password_env):
     client = app.test_client()
     assert client.get("/api/logs").status_code == 401
+    assert client.get("/api/market").status_code == 401
     assert client.get("/get-config").status_code == 401
 
 
@@ -128,12 +131,16 @@ def test_static_assets_are_public_so_login_page_is_styled(password_env):
     assert js.status_code == 200
     assert b"traderbot-theme" in js.data
     assert b"dark_mode" in js.data
+    assert b"light_mode" in js.data
+    assert b"LABELS[next]" in js.data
     assert b'[data-nav-pos="left"]' in response.data
     assert b".nav-pos-switch" in response.data
     nav_js = client.get("/static/js/nav.js")
     assert nav_js.status_code == 200
     assert b"traderbot-nav-pos" in nav_js.data
     assert b"view_sidebar" in nav_js.data
+    assert b"toolbar" in nav_js.data
+    assert b"LABELS[next]" in nav_js.data
 
 
 def test_theme_switcher_is_on_login_and_pages(password_env):
@@ -141,12 +148,14 @@ def test_theme_switcher_is_on_login_and_pages(password_env):
     login = client.get("/login")
     assert login.status_code == 200
     assert b"data-theme-toggle" in login.data
-    assert b"light_mode" in login.data
+    assert b"dark_mode" in login.data
+    assert b'aria-label="Dark"' in login.data
     _login(client)
     tracking = client.get("/")
     assert tracking.status_code == 200
     assert b"data-theme-toggle" in tracking.data
-    assert b"light_mode" in tracking.data
+    assert b"dark_mode" in tracking.data
+    assert b'aria-label="Dark"' in tracking.data
     assert b"theme-label" not in tracking.data
     profit = client.get("/profit")
     assert profit.status_code == 200
@@ -160,10 +169,11 @@ def test_nav_position_switcher_is_on_pages_not_login(password_env):
     assert b"data-nav-pos-toggle" not in login.data
     assert b"js/nav.js" not in login.data
     _login(client)
-    for path in ("/", "/profit", "/balance", "/config"):
+    for path in ("/", "/profit", "/balance", "/config", "/market"):
         body = client.get(path).get_data(as_text=True)
         assert "data-nav-pos-toggle" in body
-        assert "toolbar" in body
+        assert "view_sidebar" in body
+        assert 'aria-label="Menu à esquerda"' in body
         assert "js/nav.js" in body
         assert 'class="nav-label">Tracking</span>' in body
         assert "monitoring" in body
@@ -175,6 +185,7 @@ def test_login_success_grants_access(password_env):
     assert response.status_code == 302
     assert client.get("/").status_code == 200
     assert client.get("/balance").status_code == 200
+    assert client.get("/market").status_code == 200
     assert client.get("/api/logs").status_code == 200
 
 

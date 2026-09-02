@@ -62,6 +62,17 @@
                     <span class="nav-label">Balance</span>
                 </a>
                 <a
+                    href="{{ url_for('routes.market_page') }}"
+                    class="{{ 'active' if active_page == 'market' else '' }}"
+                    title="Market"
+                    {% if active_page == 'market' %}aria-current="page"{% endif %}
+                >
+                    <span class="material-symbols-outlined nav-icon" aria-hidden="true"
+                        >public</span
+                    >
+                    <span class="nav-label">Market</span>
+                </a>
+                <a
                     href="{{ url_for('routes.config_page') }}"
                     class="{{ 'active' if active_page == 'config' else '' }}"
                     title="Config"
