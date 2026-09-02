@@ -1,0 +1,746 @@
+{% extends "base.html" %}
+{% block title %}Market{% endblock %}
+{% block body_class %}page-market{% endblock %}
+{% block content %}
+<div class="market-top">
+    <div class="market-heading">
+        <h1>Market</h1>
+        <p class="subtitle">
+            Cotações, sentimento e notícias públicas. Não opera na Binance — só
+            leitura de fontes externas.
+        </p>
+    </div>
+    <div class="portfolio-summary" id="global-summary">
+        <div class="portfolio-metric">
+            <span class="portfolio-label">Market cap</span>
+            <span class="portfolio-value" id="global-mcap">—</span>
+        </div>
+        <div class="portfolio-metric">
+            <span class="portfolio-label">Volume 24h</span>
+            <span class="portfolio-value" id="global-volume">—</span>
+        </div>
+        <div class="portfolio-metric">
+            <span class="portfolio-label">Dominância BTC</span>
+            <span class="portfolio-value" id="global-btc">—</span>
+        </div>
+        <div class="portfolio-metric">
+            <span class="portfolio-label">Mcap 24h</span>
+            <span class="portfolio-value" id="global-change">—</span>
+        </div>
+    </div>
+</div>
+
+<div class="toolbar">
+    <button type="button" class="icon-btn" id="refresh-btn">
+        <span class="material-symbols-outlined">refresh</span>
+        Atualizar
+    </button>
+    <span class="market-updated" id="updated-at"></span>
+</div>
+
+<div id="market-banner" class="impact-banner error" hidden></div>
+
+<div class="market-body">
+    <div class="market-grid">
+        <section class="form-card market-quotes" aria-labelledby="quotes-title">
+            <h2 class="section-title" id="quotes-title">Criptomoedas</h2>
+            <p class="market-section-error" id="quotes-error" hidden></p>
+            <div class="table-wrap">
+                <table class="balance-table market-table" id="quotes-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Moeda</th>
+                            <th class="num">Preço</th>
+                            <th class="num">1h</th>
+                            <th class="num">24h</th>
+                            <th class="num">7d</th>
+                            <th class="num">Mcap</th>
+                        </tr>
+                    </thead>
+                    <tbody id="quotes-body"></tbody>
+                </table>
+            </div>
+            <div class="empty" id="quotes-empty" hidden>Sem cotações no momento.</div>
+        </section>
+
+        <section class="form-card market-side" aria-labelledby="tab-fear">
+            <div
+                class="market-side-tabs"
+                role="tablist"
+                aria-label="Medo e ganância ou tendências"
+            >
+                <button
+                    type="button"
+                    class="icon-btn active"
+                    role="tab"
+                    id="tab-fear"
+                    data-side-tab="fear"
+                    aria-selected="true"
+                    aria-controls="panel-fear"
+                    tabindex="0"
+                >
+                    Medo e ganância
+                </button>
+                <button
+                    type="button"
+                    class="icon-btn"
+                    role="tab"
+                    id="tab-trending"
+                    data-side-tab="trending"
+                    aria-selected="false"
+                    aria-controls="panel-trending"
+                    tabindex="-1"
+                >
+                    Tendências
+                </button>
+            </div>
+
+            <div
+                class="market-fear"
+                id="panel-fear"
+                role="tabpanel"
+                aria-labelledby="tab-fear"
+            >
+                <p class="market-section-error" id="fear-error" hidden></p>
+                <div class="fear-layout" id="fear-body">
+                    <div
+                        class="fear-gauge"
+                        id="fear-gauge"
+                        data-band="neutral"
+                    >
+                        <svg
+                            class="fear-gauge-svg"
+                            viewBox="-12 16 224 124"
+                            role="img"
+                            aria-labelledby="fear-value fear-label"
+                        >
+                            <g
+                                id="fear-arcs"
+                                fill="none"
+                                stroke-width="14"
+                                stroke-linecap="round"
+                            ></g>
+                            <circle
+                                id="fear-knob"
+                                class="fear-gauge-knob"
+                                r="8"
+                                cx="20"
+                                cy="110"
+                            ></circle>
+                        </svg>
+                        <div class="fear-gauge-readout">
+                            <span class="fear-value" id="fear-value">—</span>
+                            <span class="fear-label" id="fear-label">—</span>
+                        </div>
+                    </div>
+                    <div
+                        class="fear-chart"
+                        id="fear-chart"
+                        role="img"
+                        aria-label="Histórico do índice Fear and Greed"
+                    ></div>
+                </div>
+                <p class="market-caption">
+                    Índice diário da alternative.me (0 medo extremo — 100 ganância
+                    extrema).
+                </p>
+            </div>
+
+            <div
+                class="market-trending"
+                id="panel-trending"
+                role="tabpanel"
+                aria-labelledby="tab-trending"
+                hidden
+            >
+                <p class="market-section-error" id="trending-error" hidden></p>
+                <h3 class="market-subtitle">Em alta nas buscas</h3>
+                <div class="market-pills" id="trending-coins"></div>
+                <div class="empty" id="trending-empty" hidden>
+                    Sem tendências no momento.
+                </div>
+                <div class="market-movers">
+                    <div>
+                        <h3 class="market-subtitle">Maiores altas 24h</h3>
+                        <div class="market-pills" id="gainers"></div>
+                    </div>
+                    <div>
+                        <h3 class="market-subtitle">Maiores quedas 24h</h3>
+                        <div class="market-pills" id="losers"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <section class="form-card market-news-card" aria-labelledby="news-title">
+        <div class="market-news-head">
+            <h2 class="section-title" id="news-title">Notícias</h2>
+            <div class="market-filters" role="group" aria-label="Idioma das notícias">
+                <button type="button" class="icon-btn active" data-lang="all">Todas</button>
+                <button type="button" class="icon-btn" data-lang="pt">Português</button>
+                <button type="button" class="icon-btn" data-lang="en">English</button>
+            </div>
+        </div>
+        <p class="market-section-error" id="news-error" hidden></p>
+        <div class="market-news" id="news-list"></div>
+        <div class="empty" id="news-empty" hidden>Nenhuma notícia no momento.</div>
+        <p class="market-attribution" id="attribution"></p>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/lightweight-charts.standalone.production.js') }}"></script>
+<script>
+    const REFRESH_MS = 60000;
+    const FEAR_LABELS = {
+        "Extreme Fear": "Medo extremo",
+        Fear: "Medo",
+        Neutral: "Neutro",
+        Greed: "Ganância",
+        "Extreme Greed": "Ganância extrema",
+    };
+
+    let newsLang = "all";
+    let newsItems = [];
+    let fearChart = null;
+    let fearSeries = null;
+    let lastFear = null;
+
+    function escapeHtml(text) {
+        return String(text)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#39;");
+    }
+
+    function safeHttpUrl(url) {
+        try {
+            const parsed = new URL(String(url || ""));
+            if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+                return parsed.href;
+            }
+        } catch (error) {
+            return "";
+        }
+        return "";
+    }
+
+    function cssVar(name, fallback) {
+        const value = getComputedStyle(document.documentElement)
+            .getPropertyValue(name)
+            .trim();
+        return value || fallback;
+    }
+
+    function formatUsd(value, digits) {
+        if (value == null || Number.isNaN(Number(value))) return "—";
+        return Number(value).toLocaleString("pt-BR", {
+            style: "currency",
+            currency: "USD",
+            maximumFractionDigits: digits == null ? 2 : digits,
+        });
+    }
+
+    function formatCompactUsd(value) {
+        if (value == null || Number.isNaN(Number(value))) return "—";
+        return Number(value).toLocaleString("pt-BR", {
+            style: "currency",
+            currency: "USD",
+            notation: "compact",
+            maximumFractionDigits: 1,
+        });
+    }
+
+    function formatPct(value) {
+        if (value == null || Number.isNaN(Number(value))) return "—";
+        const number = Number(value);
+        const formatted = number.toLocaleString("pt-BR", {
+            maximumFractionDigits: 2,
+            minimumFractionDigits: 2,
+        });
+        return (number > 0 ? "+" : "") + formatted + "%";
+    }
+
+    function pctClass(value) {
+        if (value == null || Number.isNaN(Number(value))) return "";
+        if (Number(value) > 0) return "up";
+        if (Number(value) < 0) return "down";
+        return "";
+    }
+
+    function fearBand(value) {
+        if (value < 25) return "extreme-fear";
+        if (value < 50) return "fear";
+        if (value < 55) return "neutral";
+        if (value < 75) return "greed";
+        return "extreme-greed";
+    }
+
+    const FEAR_GAUGE = { cx: 100, cy: 110, r: 80 };
+    const FEAR_ARC_COLORS = [
+        "var(--fear-seg-1)",
+        "var(--fear-seg-2)",
+        "var(--fear-seg-3)",
+        "var(--fear-seg-4)",
+        "var(--fear-seg-5)",
+    ];
+
+    function fearGaugePoint(value) {
+        const clamped = Math.min(100, Math.max(0, Number(value) || 0));
+        const rad = ((180 + (clamped / 100) * 180) * Math.PI) / 180;
+        return {
+            x: FEAR_GAUGE.cx + FEAR_GAUGE.r * Math.cos(rad),
+            y: FEAR_GAUGE.cy + FEAR_GAUGE.r * Math.sin(rad),
+        };
+    }
+
+    function fearArcPath(fromDeg, toDeg) {
+        const start = fearGaugePoint(((fromDeg - 180) / 180) * 100);
+        const end = fearGaugePoint(((toDeg - 180) / 180) * 100);
+        return (
+            "M " +
+            start.x.toFixed(2) +
+            " " +
+            start.y.toFixed(2) +
+            " A " +
+            FEAR_GAUGE.r +
+            " " +
+            FEAR_GAUGE.r +
+            " 0 0 1 " +
+            end.x.toFixed(2) +
+            " " +
+            end.y.toFixed(2)
+        );
+    }
+
+    function ensureFearGaugeArcs() {
+        const group = document.getElementById("fear-arcs");
+        if (!group || group.childElementCount) return;
+        const gap = 7;
+        const span = (180 - gap * 4) / 5;
+        for (let i = 0; i < 5; i++) {
+            const from = 180 + i * (span + gap);
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("d", fearArcPath(from, from + span));
+            path.setAttribute("stroke", FEAR_ARC_COLORS[i]);
+            group.appendChild(path);
+        }
+    }
+
+    function positionFearKnob(value) {
+        const knob = document.getElementById("fear-knob");
+        const point = fearGaugePoint(Number.isFinite(value) ? value : 0);
+        knob.setAttribute("cx", String(point.x));
+        knob.setAttribute("cy", String(point.y));
+        knob.setAttribute("visibility", Number.isFinite(value) ? "visible" : "hidden");
+    }
+
+    function relativeTime(iso) {
+        if (!iso) return "";
+        const then = new Date(iso).getTime();
+        if (!Number.isFinite(then)) return "";
+        const delta = Math.round((Date.now() - then) / 1000);
+        if (delta < 60) return "agora";
+        if (delta < 3600) return Math.floor(delta / 60) + " min";
+        if (delta < 86400) return Math.floor(delta / 3600) + " h";
+        return Math.floor(delta / 86400) + " d";
+    }
+
+    function setSectionError(id, message) {
+        const el = document.getElementById(id);
+        if (!message) {
+            el.hidden = true;
+            el.textContent = "";
+            return;
+        }
+        el.hidden = false;
+        el.textContent = message;
+    }
+
+    function renderGlobal(payload) {
+        const stats = payload && payload.ok ? payload.global : null;
+        document.getElementById("global-mcap").textContent = formatCompactUsd(
+            stats && stats.market_cap_usd
+        );
+        document.getElementById("global-volume").textContent = formatCompactUsd(
+            stats && stats.volume_24h_usd
+        );
+        const btc = stats && stats.btc_dominance;
+        document.getElementById("global-btc").textContent =
+            btc == null ? "—" : formatPct(btc).replace("+", "");
+        const changeEl = document.getElementById("global-change");
+        const change = stats && stats.market_cap_change_24h;
+        changeEl.textContent = formatPct(change);
+        changeEl.className = "portfolio-value " + pctClass(change);
+    }
+
+    function coinDetailHref(coin) {
+        return safeHttpUrl(coin && coin.url);
+    }
+
+    function coinCell(coin) {
+        const image = safeHttpUrl(coin.image);
+        const img = image
+            ? `<img class="market-coin-icon" src="${escapeHtml(image)}" alt="" width="20" height="20">`
+            : "";
+        const watched = coin.watched
+            ? '<span class="market-watched">carteira</span>'
+            : "";
+        const label = `<span class="market-coin-text"><strong>${escapeHtml(
+            coin.symbol
+        )}</strong> ${escapeHtml(coin.name)}</span>`;
+        const href = coinDetailHref(coin);
+        const named = href
+            ? `<a class="market-coin-link" href="${escapeHtml(
+                  href
+              )}" target="_blank" rel="noopener noreferrer">${img}${label}</a>`
+            : `${img}${label}`;
+        return `${named}${watched}`;
+    }
+
+    function renderQuotes(payload) {
+        const body = document.getElementById("quotes-body");
+        const empty = document.getElementById("quotes-empty");
+        body.replaceChildren();
+        if (!payload || !payload.ok) {
+            setSectionError("quotes-error", (payload && payload.error) || "Cotações indisponíveis.");
+            empty.hidden = false;
+            return;
+        }
+        setSectionError("quotes-error", "");
+        const coins = payload.coins || [];
+        empty.hidden = coins.length > 0;
+        coins.forEach((coin) => {
+            const tr = document.createElement("tr");
+            if (coin.watched) tr.className = "watched";
+            tr.innerHTML = `
+                <td>${coin.rank == null ? "—" : escapeHtml(coin.rank)}</td>
+                <td class="market-coin">${coinCell(coin)}</td>
+                <td class="num">${escapeHtml(formatUsd(coin.price_usd, coin.price_usd >= 1 ? 2 : 6))}</td>
+                <td class="num ${pctClass(coin.change_1h)}">${escapeHtml(formatPct(coin.change_1h))}</td>
+                <td class="num ${pctClass(coin.change_24h)}">${escapeHtml(formatPct(coin.change_24h))}</td>
+                <td class="num ${pctClass(coin.change_7d)}">${escapeHtml(formatPct(coin.change_7d))}</td>
+                <td class="num">${escapeHtml(formatCompactUsd(coin.market_cap))}</td>`;
+            body.appendChild(tr);
+        });
+    }
+
+    function destroyFearChart() {
+        if (fearChart) {
+            fearChart.remove();
+            fearChart = null;
+            fearSeries = null;
+        }
+    }
+
+    function renderFearChart(history) {
+        const host = document.getElementById("fear-chart");
+        const LWC = window.LightweightCharts;
+        if (document.getElementById("panel-fear").hidden) {
+            destroyFearChart();
+            return;
+        }
+        if (!LWC || !history || history.length < 2) {
+            destroyFearChart();
+            host.replaceChildren();
+            return;
+        }
+        const points = history
+            .map((row) => ({ time: Number(row.timestamp), value: Number(row.value) }))
+            .filter((row) => Number.isFinite(row.time) && Number.isFinite(row.value));
+        if (points.length < 2) {
+            destroyFearChart();
+            return;
+        }
+        if (!fearChart) {
+            fearChart = LWC.createChart(host, {
+                autoSize: false,
+                width: Math.max(host.clientWidth, 1),
+                height: Math.max(host.clientHeight, 1),
+                layout: {
+                    background: { color: "transparent" },
+                    textColor: cssVar("--md-on-surface-variant", "#5c5c57"),
+                    fontFamily: "Roboto, system-ui, sans-serif",
+                    fontSize: 11,
+                    attributionLogo: false,
+                },
+                grid: {
+                    vertLines: { color: cssVar("--md-chart-grid", "#eceff1") },
+                    horzLines: { color: cssVar("--md-chart-grid", "#eceff1") },
+                },
+                rightPriceScale: { borderVisible: false },
+                timeScale: { borderVisible: false, timeVisible: false },
+                handleScale: false,
+                handleScroll: false,
+            });
+            fearSeries = fearChart.addSeries(LWC.LineSeries, {
+                color: cssVar("--md-info", "#1565c0"),
+                lineWidth: 2,
+                lastValueVisible: false,
+                priceLineVisible: false,
+            });
+        } else {
+            fearChart.applyOptions({
+                layout: {
+                    background: { color: "transparent" },
+                    textColor: cssVar("--md-on-surface-variant", "#5c5c57"),
+                },
+                grid: {
+                    vertLines: { color: cssVar("--md-chart-grid", "#eceff1") },
+                    horzLines: { color: cssVar("--md-chart-grid", "#eceff1") },
+                },
+            });
+            fearSeries.applyOptions({ color: cssVar("--md-info", "#1565c0") });
+        }
+        fearSeries.setData(points);
+        const width = host.clientWidth;
+        const height = host.clientHeight;
+        if (width > 8 && height > 8 && typeof fearChart.resize === "function") {
+            fearChart.resize(width, height);
+        }
+        fearChart.timeScale().fitContent();
+    }
+
+    function renderFear(payload) {
+        lastFear = payload;
+        ensureFearGaugeArcs();
+        const gauge = document.getElementById("fear-gauge");
+        const valueEl = document.getElementById("fear-value");
+        const labelEl = document.getElementById("fear-label");
+        if (!payload || !payload.ok) {
+            setSectionError("fear-error", (payload && payload.error) || "Índice indisponível.");
+            valueEl.textContent = "—";
+            labelEl.textContent = "—";
+            gauge.dataset.band = "neutral";
+            positionFearKnob(0);
+            destroyFearChart();
+            return;
+        }
+        setSectionError("fear-error", "");
+        const value = Number(payload.value);
+        valueEl.textContent = Number.isFinite(value) ? String(value) : "—";
+        labelEl.textContent = FEAR_LABELS[payload.classification] || payload.classification || "—";
+        gauge.dataset.band = fearBand(Number.isFinite(value) ? value : 50);
+        positionFearKnob(value);
+        if (!document.getElementById("panel-fear").hidden) {
+            renderFearChart(payload.history || []);
+        } else {
+            destroyFearChart();
+        }
+    }
+
+    function showSideTab(name) {
+        const isFear = name === "fear";
+        const fearPanel = document.getElementById("panel-fear");
+        const trendingPanel = document.getElementById("panel-trending");
+        fearPanel.hidden = !isFear;
+        trendingPanel.hidden = isFear;
+        document.querySelectorAll(".market-side-tabs [role='tab']").forEach((tab) => {
+            const selected = tab.getAttribute("data-side-tab") === name;
+            tab.classList.toggle("active", selected);
+            tab.setAttribute("aria-selected", selected ? "true" : "false");
+            tab.tabIndex = selected ? 0 : -1;
+        });
+        document.querySelector(".market-side").setAttribute(
+            "aria-labelledby",
+            isFear ? "tab-fear" : "tab-trending"
+        );
+        if (isFear && lastFear && lastFear.ok) {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    renderFearChart(lastFear.history || []);
+                });
+            });
+        }
+    }
+
+    function moverPill(coin, withChange) {
+        const change = withChange
+            ? `<span class="${pctClass(coin.change_24h)}">${escapeHtml(formatPct(coin.change_24h))}</span>`
+            : "";
+        const inner = `<strong>${escapeHtml(coin.symbol)}</strong> ${escapeHtml(
+            coin.name || ""
+        )} ${change}`;
+        const href = coinDetailHref(coin);
+        if (href) {
+            return `<a class="market-pill" href="${escapeHtml(
+                href
+            )}" target="_blank" rel="noopener noreferrer">${inner}</a>`;
+        }
+        return `<span class="market-pill">${inner}</span>`;
+    }
+
+    function renderTrending(payload) {
+        const coinsEl = document.getElementById("trending-coins");
+        const empty = document.getElementById("trending-empty");
+        const gainersEl = document.getElementById("gainers");
+        const losersEl = document.getElementById("losers");
+        if (!payload || !payload.ok) {
+            setSectionError(
+                "trending-error",
+                (payload && payload.error) || "Tendências indisponíveis."
+            );
+            coinsEl.replaceChildren();
+            gainersEl.replaceChildren();
+            losersEl.replaceChildren();
+            empty.hidden = false;
+            return;
+        }
+        setSectionError("trending-error", "");
+        const coins = payload.coins || [];
+        empty.hidden = coins.length > 0;
+        coinsEl.innerHTML = coins.map((coin) => moverPill(coin, false)).join("");
+        gainersEl.innerHTML = (payload.gainers || [])
+            .map((coin) => moverPill(coin, true))
+            .join("");
+        losersEl.innerHTML = (payload.losers || [])
+            .map((coin) => moverPill(coin, true))
+            .join("");
+    }
+
+    function renderNews() {
+        const list = document.getElementById("news-list");
+        const empty = document.getElementById("news-empty");
+        const filtered = newsItems.filter(
+            (item) => newsLang === "all" || item.lang === newsLang
+        );
+        empty.hidden = filtered.length > 0;
+        list.innerHTML = filtered
+            .map((item) => {
+                const href = safeHttpUrl(item.url);
+                if (!href) return "";
+                const when = relativeTime(item.published_at);
+                return `<article class="market-news-item">
+                    <a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">
+                        ${escapeHtml(item.title)}
+                    </a>
+                    <p class="market-news-meta">${escapeHtml(item.source)}${
+                        when ? " · " + escapeHtml(when) : ""
+                    }</p>
+                    ${
+                        item.summary
+                            ? `<p class="market-news-summary">${escapeHtml(item.summary)}</p>`
+                            : ""
+                    }
+                </article>`;
+            })
+            .join("");
+    }
+
+    function renderAttribution(rows) {
+        const el = document.getElementById("attribution");
+        if (!rows || !rows.length) {
+            el.textContent = "";
+            return;
+        }
+        el.innerHTML = rows
+            .map((row) => {
+                const href = safeHttpUrl(row.url);
+                const name = href
+                    ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(
+                          row.name
+                      )}</a>`
+                    : escapeHtml(row.name);
+                return `${name} (${escapeHtml(row.role || "")})`;
+            })
+            .join(" · ");
+    }
+
+    async function loadMarket(forceRefresh) {
+        const banner = document.getElementById("market-banner");
+        banner.hidden = true;
+        const url = forceRefresh ? "/api/market?refresh=1" : "/api/market";
+        const response = await traderbotFetch(url);
+        if (!response.ok) {
+            banner.hidden = false;
+            banner.textContent = "Não foi possível carregar o mercado.";
+            return;
+        }
+        const data = await response.json();
+        if (data.error && !data.quotes) {
+            banner.hidden = false;
+            banner.textContent = data.error;
+            return;
+        }
+        const updated = data.updated_at ? new Date(data.updated_at) : null;
+        document.getElementById("updated-at").textContent = updated
+            ? "Atualizado " + updated.toLocaleString("pt-BR")
+            : "";
+        renderGlobal(data.quotes);
+        renderQuotes(data.quotes);
+        renderFear(data.fear);
+        renderTrending(data.trending);
+        newsItems = (data.news && data.news.items) || [];
+        if (!data.news || !data.news.ok) {
+            setSectionError("news-error", (data.news && data.news.error) || "Notícias indisponíveis.");
+        } else {
+            setSectionError("news-error", "");
+        }
+        renderNews();
+        renderAttribution(data.attribution);
+    }
+
+    document.querySelectorAll(".market-filters .icon-btn").forEach((button) => {
+        button.addEventListener("click", () => {
+            newsLang = button.getAttribute("data-lang") || "all";
+            document.querySelectorAll(".market-filters .icon-btn").forEach((el) => {
+                el.classList.toggle("active", el === button);
+            });
+            renderNews();
+        });
+    });
+
+    document.querySelectorAll(".market-side-tabs [role='tab']").forEach((button) => {
+        button.addEventListener("click", () => {
+            showSideTab(button.getAttribute("data-side-tab") || "fear");
+        });
+        button.addEventListener("keydown", (event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            const tabs = [...document.querySelectorAll(".market-side-tabs [role='tab']")];
+            const index = tabs.indexOf(button);
+            const next =
+                event.key === "ArrowRight"
+                    ? tabs[(index + 1) % tabs.length]
+                    : tabs[(index - 1 + tabs.length) % tabs.length];
+            next.focus();
+            showSideTab(next.getAttribute("data-side-tab") || "fear");
+            event.preventDefault();
+        });
+    });
+
+    document.getElementById("refresh-btn").addEventListener("click", () => {
+        loadMarket(true).catch(() => {
+            const banner = document.getElementById("market-banner");
+            banner.hidden = false;
+            banner.textContent = "Não foi possível carregar o mercado.";
+        });
+    });
+
+    new MutationObserver(() => {
+        if (
+            lastFear &&
+            lastFear.ok &&
+            !document.getElementById("panel-fear").hidden
+        ) {
+            renderFearChart(lastFear.history || []);
+        }
+    }).observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["data-theme"],
+    });
+
+    loadMarket(false).catch(() => {
+        const banner = document.getElementById("market-banner");
+        banner.hidden = false;
+        banner.textContent = "Não foi possível carregar o mercado.";
+    });
+    setInterval(() => {
+        loadMarket(false).catch(() => {});
+    }, REFRESH_MS);
+</script>
+{% endblock %}

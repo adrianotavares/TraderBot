@@ -61,6 +61,7 @@ from services.chart_data import (
     empty_indicators,
 )
 from services.market_data import MarketDataService
+from services.market_overview import build_market_overview
 from services.order_sync import DEFAULT_PROFIT_CUTOFF, sync_filled_orders_from_binance
 from services.outcome_history import (
     META_REBUILT,
@@ -629,6 +630,16 @@ def balance_page():
     )
 
 
+@routes.route("/market")
+def market_page():
+    settings, _ = load_settings()
+    return render_template(
+        "market.html",
+        config=_dashboard_config(settings),
+        active_page="market",
+    )
+
+
 @routes.route("/config")
 def config_page():
     settings, _ = load_settings()
@@ -646,6 +657,21 @@ def get_config():
         return jsonify(_dashboard_config(settings))
     except Exception as e:
         return jsonify({"error": f"Erro ao carregar config: {str(e)}"}), 500
+
+
+@routes.route("/api/market", methods=["GET"])
+def get_market():
+    try:
+        settings, _ = load_settings()
+        watched = [asset.stock_code for asset in settings.assets]
+        return jsonify(
+            build_market_overview(
+                watched_symbols=watched,
+                refresh=request.args.get("refresh") == "1",
+            )
+        )
+    except Exception as e:
+        return jsonify({"error": f"Erro ao carregar mercado: {str(e)}"}), 500
 
 
 @routes.route("/api/portfolio", methods=["GET"])

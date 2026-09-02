@@ -16,6 +16,10 @@
         return pos === "left" ? "left" : "top";
     }
 
+    function opposite(pos) {
+        return pos === "left" ? "top" : "left";
+    }
+
     function current() {
         return normalize(root.getAttribute("data-nav-pos"));
     }
@@ -30,13 +34,14 @@
 
     function syncButtons() {
         var pos = current();
+        var next = opposite(pos);
         document.querySelectorAll("[data-nav-pos-toggle]").forEach(function (btn) {
             btn.setAttribute("aria-pressed", pos === "left" ? "true" : "false");
-            btn.setAttribute("aria-label", LABELS[pos]);
-            btn.setAttribute("title", TITLES[pos]);
+            btn.setAttribute("aria-label", LABELS[next]);
+            btn.setAttribute("title", TITLES[next]);
             var icon = btn.querySelector(".material-symbols-outlined");
             if (icon) {
-                icon.textContent = ICONS[pos];
+                icon.textContent = ICONS[next];
             }
         });
     }

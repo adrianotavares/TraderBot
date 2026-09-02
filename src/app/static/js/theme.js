@@ -14,6 +14,10 @@
         return theme === "dark" ? "dark" : "light";
     }
 
+    function opposite(theme) {
+        return theme === "dark" ? "light" : "dark";
+    }
+
     function current() {
         return normalize(root.getAttribute("data-theme"));
     }
@@ -28,13 +32,14 @@
 
     function syncButtons() {
         var theme = current();
+        var next = opposite(theme);
         document.querySelectorAll("[data-theme-toggle]").forEach(function (btn) {
             btn.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
-            btn.setAttribute("aria-label", LABELS[theme]);
-            btn.setAttribute("title", LABELS[theme]);
+            btn.setAttribute("aria-label", LABELS[next]);
+            btn.setAttribute("title", LABELS[next]);
             var icon = btn.querySelector(".material-symbols-outlined");
             if (icon) {
-                icon.textContent = ICONS[theme];
+                icon.textContent = ICONS[next];
             }
         });
     }
