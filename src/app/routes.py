@@ -448,7 +448,7 @@ def get_tracking_charts(
 def _validate_stocks_traded_list(stocks):
     if not isinstance(stocks, list) or not stocks:
         raise ValueError("stocks_traded_list must be a non-empty list")
-    required_keys = ("stockCode", "operationCode", "tradedQuantity")
+    required_keys = ("stockCode", "operationCode", "tradedUsdt")
     for index, stock in enumerate(stocks):
         if not isinstance(stock, dict):
             raise ValueError(f"stocks_traded_list[{index}] must be an object")
@@ -473,7 +473,7 @@ def _dashboard_config(settings):
         {
             "stockCode": a.stock_code,
             "operationCode": a.operation_code,
-            "tradedQuantity": a.traded_quantity,
+            "tradedUsdt": a.traded_usdt,
         }
         for a in settings.assets
     ]

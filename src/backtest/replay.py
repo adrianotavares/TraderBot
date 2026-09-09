@@ -92,8 +92,7 @@ class FakeBot(PersistedTradeFields):
         self.stock_data = stock_data
         self.quote_balance = quote_balance
         self.base_balance = base_balance
-        self.traded_quantity = 0.0
-        self.traded_percentage = 100.0
+        self.traded_usdt = quote_balance if quote_balance > 0 else 0.0
         self.min_notional = 5.0
         self.step_size = 0.001
         self.tick_size = 0.01

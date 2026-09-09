@@ -31,7 +31,7 @@ def test_apply_dashboard_update_legacy_keys():
                 {
                     "stock_code": "BTC",
                     "operation_code": "BTCUSDT",
-                    "traded_quantity": 0.001,
+                    "traded_usdt": 25.0,
                 }
             ],
         }
@@ -42,13 +42,33 @@ def test_apply_dashboard_update_legacy_keys():
             "MAIN_STRATEGY": "vortex",
             "STOP_LOSS_PERCENTAGE": 2.5,
             "stocks_traded_list": [
-                {"stockCode": "ETH", "operationCode": "ETHUSDT", "tradedQuantity": 0.01}
+                {"stockCode": "ETH", "operationCode": "ETHUSDT", "tradedUsdt": 40.0}
             ],
         },
     )
     assert updated.strategy.main == "vortex"
     assert updated.risk.stop_loss_pct == 2.5
     assert updated.assets[0].operation_code == "ETHUSDT"
+    assert updated.assets[0].traded_usdt == 40.0
+
+
+def test_legacy_asset_sizing_is_rejected():
+    with pytest.raises(ValidationError, match="traded_usdt"):
+        TradingSettings.model_validate(
+            {
+                "environment": "testnet",
+                "strategy": {"main": "moving_average", "fallback": "moving_average"},
+                "risk": {},
+                "timing": {},
+                "assets": [
+                    {
+                        "stock_code": "BTC",
+                        "operation_code": "BTCUSDT",
+                        "traded_percentage": 50,
+                    }
+                ],
+            }
+        )
 
 
 def test_config_file_exists():

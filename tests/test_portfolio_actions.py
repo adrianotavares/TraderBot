@@ -12,10 +12,10 @@ from services.portfolio_actions import (
 )
 
 ASSETS = [
-    SimpleNamespace(stock_code="BTC", operation_code="BTCUSDT", traded_percentage=99),
-    SimpleNamespace(stock_code="ETH", operation_code="ETHUSDT", traded_percentage=1),
-    SimpleNamespace(stock_code="SOL", operation_code="SOLUSDT", traded_percentage=0),
-    SimpleNamespace(stock_code="XRP", operation_code="XRPUSDT", traded_percentage=0),
+    SimpleNamespace(stock_code="BTC", operation_code="BTCUSDT", traded_usdt=99),
+    SimpleNamespace(stock_code="ETH", operation_code="ETHUSDT", traded_usdt=1),
+    SimpleNamespace(stock_code="SOL", operation_code="SOLUSDT", traded_usdt=0),
+    SimpleNamespace(stock_code="XRP", operation_code="XRPUSDT", traded_usdt=0),
 ]
 
 WEIGHTS_100 = {"BTCUSDT": 40, "ETHUSDT": 30, "SOLUSDT": 20, "XRPUSDT": 10}

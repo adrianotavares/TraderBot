@@ -33,7 +33,7 @@ def _base_payload(**overrides):
             {
                 "stock_code": "BTC",
                 "operation_code": "BTCUSDT",
-                "traded_percentage": 10,
+                "traded_usdt": 10,
                 "breakout_price": 78000,
             }
         ],
@@ -71,7 +71,7 @@ def test_asset_identity_is_hard_sizing_is_soft():
         {
             "stock_code": "ETH",
             "operation_code": "ETHUSDT",
-            "traded_percentage": 10,
+            "traded_usdt": 10,
         }
     ]
     new = TradingSettings.model_validate(payload)
@@ -79,7 +79,7 @@ def test_asset_identity_is_hard_sizing_is_soft():
     assert "assets" in hard
 
     payload = _base_payload()
-    payload["assets"][0]["traded_percentage"] = 25
+    payload["assets"][0]["traded_usdt"] = 25
     sized = TradingSettings.model_validate(payload)
     hard, soft = classify_settings_delta(old, sized)
     assert hard == []

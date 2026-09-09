@@ -16,7 +16,7 @@ risk:
   stop_loss_pct: 2.0
   trailing_stop_loss: true
   take_profit:
-  - at: 7.0
+  - at: 3.0
     amount: 100.0
   max_daily_loss_usdt: 10.0
   max_trades_per_day: 5
@@ -29,19 +29,28 @@ timing:
 assets:
 - stock_code: BTC
   operation_code: BTCUSDT
+  traded_usdt: 10.0
   traded_quantity: 0.0
-  traded_percentage: 30.0
+  traded_percentage: 0.0
   breakout_price: 78000.0
 - stock_code: ETH
   operation_code: ETHUSDT
+  traded_usdt: 10.0
   traded_quantity: 0.0
-  traded_percentage: 40.0
+  traded_percentage: 0.0
   breakout_price: 2450.0
 - stock_code: SOL
   operation_code: SOLUSDT
+  traded_usdt: 10.0
   traded_quantity: 0.0
-  traded_percentage: 30.0
+  traded_percentage: 0.0
   breakout_price: 458.0
+- stock_code: BNB
+  operation_code: BNBUSDT
+  traded_usdt: 10.0
+  traded_quantity: 0.0
+  traded_percentage: 0.0
+  breakout_price: 700.0
 operation:
   cancel_orders_on_shutdown: false
   circuit_breaker_errors: 3
@@ -67,7 +76,7 @@ regime:
   min_candles: 60
   action_in_lateral: grid
 grid:
-  enabled: false
+  enabled: true
   levels: 6
   capital_pct: 30.0
   min_channel_width_pct: 1.5

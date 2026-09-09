@@ -59,10 +59,9 @@ def test_circuit_breaker(risk_manager):
     assert risk_manager.is_circuit_open()
 
 
-def test_compute_trade_quantity_percentage(risk_manager):
+def test_compute_trade_quantity_usdt(risk_manager):
     qty = risk_manager.compute_trade_quantity(
-        traded_quantity=0,
-        traded_percentage=50,
+        traded_usdt=500,
         balance=1.0,
         quote_balance=1000.0,
         close_price=50000.0,
@@ -71,10 +70,31 @@ def test_compute_trade_quantity_percentage(risk_manager):
     assert qty == pytest.approx(0.01)
 
 
+def test_compute_trade_quantity_caps_at_quote_balance(risk_manager):
+    qty = risk_manager.compute_trade_quantity(
+        traded_usdt=500,
+        balance=0.0,
+        quote_balance=100.0,
+        close_price=50000.0,
+        side="BUY",
+    )
+    assert qty == pytest.approx(0.002)
+
+
+def test_compute_trade_quantity_zero_usdt(risk_manager):
+    qty = risk_manager.compute_trade_quantity(
+        traded_usdt=0,
+        balance=1.0,
+        quote_balance=1000.0,
+        close_price=50000.0,
+        side="BUY",
+    )
+    assert qty == 0.0
+
+
 def test_compute_trade_quantity_bumps_to_min_notional(risk_manager):
     qty = risk_manager.compute_trade_quantity(
-        traded_quantity=0,
-        traded_percentage=50,
+        traded_usdt=2,
         balance=0.0,
         quote_balance=8.43,
         close_price=72000.0,
@@ -86,8 +106,7 @@ def test_compute_trade_quantity_bumps_to_min_notional(risk_manager):
 
 def test_compute_trade_quantity_does_not_exceed_balance(risk_manager):
     qty = risk_manager.compute_trade_quantity(
-        traded_quantity=0,
-        traded_percentage=50,
+        traded_usdt=2,
         balance=0.0,
         quote_balance=4.0,
         close_price=72000.0,
@@ -99,8 +118,7 @@ def test_compute_trade_quantity_does_not_exceed_balance(risk_manager):
 
 def test_compute_trade_quantity_meets_notional_after_step_floor(risk_manager):
     qty = risk_manager.compute_trade_quantity(
-        traded_quantity=0,
-        traded_percentage=50,
+        traded_usdt=2,
         balance=0.0,
         quote_balance=8.43,
         close_price=72000.0,
@@ -114,8 +132,7 @@ def test_compute_trade_quantity_meets_notional_after_step_floor(risk_manager):
 
 def test_compute_trade_quantity_returns_zero_when_balance_below_notional(risk_manager):
     qty = risk_manager.compute_trade_quantity(
-        traded_quantity=0,
-        traded_percentage=50,
+        traded_usdt=2,
         balance=0.0,
         quote_balance=4.0,
         close_price=72000.0,

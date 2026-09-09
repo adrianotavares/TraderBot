@@ -65,8 +65,7 @@ class BinanceTraderBot(PersistedTradeFields):
         self,
         stock_code,
         operation_code,
-        traded_quantity,
-        traded_percentage,
+        traded_usdt,
         candle_period,
         time_to_trade=30 * 60,
         delay_after_order=60 * 60,
@@ -103,8 +102,7 @@ class BinanceTraderBot(PersistedTradeFields):
 
         self.stock_code = stock_code
         self.operation_code = operation_code
-        self.traded_quantity = traded_quantity
-        self.traded_percentage = traded_percentage
+        self.traded_usdt = traded_usdt
         self.candle_period = candle_period
         self.fallback_activated = fallback_activated
         self.acceptable_loss_percentage = acceptable_loss_percentage
@@ -298,8 +296,7 @@ class BinanceTraderBot(PersistedTradeFields):
             None,
         )
         if asset is not None:
-            self.traded_quantity = asset.traded_quantity
-            self.traded_percentage = asset.traded_percentage
+            self.traded_usdt = asset.traded_usdt
             self.breakout_price = asset.breakout_price
             self.engine.breakout_price = asset.breakout_price
 

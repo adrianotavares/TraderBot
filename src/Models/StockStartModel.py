@@ -7,9 +7,8 @@ class StockStartModel:
     # fmt: off
     stockCode: str
     operationCode: str
-    tradedQuantity: float
+    tradedUsdt: float
     candlePeriod: str
-    tradedPercentage: float  = 100 # Ainda não implementado
 
     # Ajustes técnicos    
     fallBackActivated: bool = True          # Define se a estratégia de Fallback será usada (ela pode entrar comprada em mercados subindo)

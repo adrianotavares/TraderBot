@@ -558,8 +558,7 @@ class TradingEngine:
         # Limit buys can sit ~0.2% below last close; size against that so NOTIONAL still holds.
         sizing_price = close_price * (0.998 if side == "BUY" else 0.995)
         return self.risk_manager.compute_trade_quantity(
-            self.bot.traded_quantity,
-            self.bot.traded_percentage,
+            self.bot.traded_usdt,
             self.bot.last_stock_account_balance,
             self._quote_balance(),
             sizing_price,

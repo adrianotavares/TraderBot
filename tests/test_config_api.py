@@ -40,8 +40,7 @@ timing:
 assets:
   - stock_code: BTC
     operation_code: BTCUSDT
-    traded_quantity: 0
-    traded_percentage: 50
+    traded_usdt: 50
 """
 
 
@@ -104,10 +103,16 @@ def test_schema_exposes_sections_and_bounds(config_env):
     assert schema["strategy_defaults"]["orb_day"]["opening_range_bars"] == 2
     assert schema["strategy_defaults"]["orb_day"]["adx_min"] == 25.0
 
-    assert [f["name"] for f in schema["assets"]["fields"]][:2] == [
+    assert [f["name"] for f in schema["assets"]["fields"]][:3] == [
         "stock_code",
         "operation_code",
+        "traded_usdt",
     ]
+    asset_by_name = {f["name"]: f for f in schema["assets"]["fields"]}
+    assert asset_by_name["traded_usdt"]["label"] == "Traded USDT"
+    assert "traded_quantity" not in asset_by_name
+    assert "traded_percentage" not in asset_by_name
+    assert "assets.traded_usdt" in schema["sensitive_fields"]
     assert [f["name"] for f in schema["take_profit"]["fields"]] == ["at", "amount"]
 
 

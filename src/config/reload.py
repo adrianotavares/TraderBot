@@ -69,8 +69,7 @@ def classify_settings_delta(
         if previous is None:
             continue
         if (
-            previous.traded_quantity != asset.traded_quantity
-            or previous.traded_percentage != asset.traded_percentage
+            previous.traded_usdt != asset.traded_usdt
             or previous.breakout_price != asset.breakout_price
         ):
             if "asset_sizing" not in soft:

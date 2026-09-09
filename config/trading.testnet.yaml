@@ -37,8 +37,9 @@ timing:
 assets:
   - stock_code: BTC
     operation_code: BTCUSDT
+    traded_usdt: 10
     traded_quantity: 0
-    traded_percentage: 10
+    traded_percentage: 0
     breakout_price: 95000
 
 operation:

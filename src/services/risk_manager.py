@@ -104,8 +104,7 @@ class RiskManager:
 
     def compute_trade_quantity(
         self,
-        traded_quantity: float,
-        traded_percentage: float,
+        traded_usdt: float,
         balance: float,
         quote_balance: float,
         close_price: float,
@@ -113,14 +112,10 @@ class RiskManager:
         min_notional: float = 0.0,
         step_size: float = 0.0,
     ) -> float:
-        if traded_quantity > 0:
-            quantity = traded_quantity
-        elif traded_percentage <= 0:
+        if traded_usdt <= 0 or close_price <= 0:
             return 0.0
-        elif side == "BUY":
-            quote_to_use = quote_balance * (traded_percentage / 100)
-            if close_price <= 0:
-                return 0.0
+        if side == "BUY":
+            quote_to_use = min(traded_usdt, quote_balance)
             if (
                 min_notional > 0
                 and quote_to_use < min_notional <= quote_balance
@@ -128,7 +123,7 @@ class RiskManager:
                 quote_to_use = min_notional
             quantity = quote_to_use / close_price
         else:
-            quantity = balance * (traded_percentage / 100)
+            quantity = min(traded_usdt / close_price, balance)
 
         if step_size <= 0:
             return quantity

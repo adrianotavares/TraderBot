@@ -41,7 +41,7 @@ def test_balance_page_renders(api_env):
     body = response.get_data(as_text=True)
     assert "Balancear" in body
     assert "Liquidate" in body
-    assert "traded_percentage" in body
+    assert "traded_usdt" in body
 
 
 def test_rebalance_preview_returns_400_on_bad_weights(api_env, monkeypatch):

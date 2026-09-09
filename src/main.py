@@ -27,8 +27,7 @@ def trader_loop(stock_start: StockStartModel, watch: SettingsWatch, env):
     bot = BinanceTraderBot(
         stock_code=stock_start.stockCode,
         operation_code=stock_start.operationCode,
-        traded_quantity=stock_start.tradedQuantity,
-        traded_percentage=stock_start.tradedPercentage,
+        traded_usdt=stock_start.tradedUsdt,
         candle_period=stock_start.candlePeriod,
         time_to_trade=stock_start.tempoEntreTrades,
         delay_after_order=stock_start.delayEntreOrdens,

@@ -42,13 +42,12 @@ def main():
     asset = settings.assets[0]
 
     candle_period = Client.KLINE_INTERVAL_4HOUR
-    initial_balance = asset.traded_quantity or 0.001
+    initial_balance = 0.001
 
     bot = BinanceTraderBot(
         stock_code=asset.stock_code,
         operation_code=asset.operation_code,
-        traded_quantity=0,
-        traded_percentage=100,
+        traded_usdt=0,
         candle_period=candle_period,
         api_key=env.api_key,
         secret_key=env.secret_key,

@@ -45,25 +45,56 @@ class TakeProfitLevel(BaseModel):
     )
 
 
+_LEGACY_ASSET_SIZING_KEYS = (
+    "traded_quantity",
+    "traded_percentage",
+    "tradedQuantity",
+    "tradedPercentage",
+)
+
+
+def _normalize_asset_sizing(data: Any) -> Any:
+    if not isinstance(data, dict):
+        return data
+    payload = dict(data)
+    has_usdt = (
+        payload.get("traded_usdt") is not None or payload.get("tradedUsdt") is not None
+    )
+    legacy = [key for key in _LEGACY_ASSET_SIZING_KEYS if key in payload]
+    if legacy and not has_usdt:
+        raise ValueError(
+            "traded_quantity and traded_percentage were replaced by traded_usdt "
+            "(USDT notional per buy). Set traded_usdt and remove the old keys."
+        )
+    for key in legacy:
+        payload.pop(key, None)
+    if "tradedUsdt" in payload and "traded_usdt" not in payload:
+        payload["traded_usdt"] = payload.pop("tradedUsdt")
+    return payload
+
+
 class AssetConfig(BaseModel):
     stock_code: str = Field(description="Símbolo do ativo, ex.: BTC")
     operation_code: str = Field(description="Par negociado na Binance, ex.: BTCUSDT")
-    traded_quantity: float = Field(
+    traded_usdt: float = Field(
         default=0.0,
         ge=0,
-        description="Quantidade fixa por ordem. Use 0 para dimensionar por percentual",
-    )
-    traded_percentage: float = Field(
-        default=100.0,
-        ge=0,
-        le=100,
-        description="Percentual do saldo disponível alocado a este ativo",
+        title="Traded USDT",
+        description=(
+            "Notional em USDT por compra. 0 desativa entradas neste par. "
+            "Limitado ao saldo disponível e ao notional mínimo da exchange"
+        ),
     )
     breakout_price: float = Field(
         default=0.0,
         ge=0,
         description="Preço de rompimento que reativa a estratégia de tendência",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_sizing(cls, data: Any) -> Any:
+        return _normalize_asset_sizing(data)
 
     @field_validator("stock_code", "operation_code")
     @classmethod
@@ -347,8 +378,7 @@ class TradingSettings(BaseModel):
             StockStartModel(
                 stockCode=asset.stock_code,
                 operationCode=asset.operation_code,
-                tradedQuantity=asset.traded_quantity,
-                tradedPercentage=asset.traded_percentage,
+                tradedUsdt=asset.traded_usdt,
                 candlePeriod=candle,
                 fallBackActivated=self.strategy.fallback_enabled,
                 mainStrategy=main_fn,
@@ -628,9 +658,8 @@ def apply_dashboard_update(
                 {
                     "stock_code": stock.get("stockCode", stock.get("stock_code")),
                     "operation_code": stock.get("operationCode", stock.get("operation_code")),
-                    "traded_quantity": float(stock.get("tradedQuantity", stock.get("traded_quantity", 0))),
-                    "traded_percentage": float(
-                        stock.get("tradedPercentage", stock.get("traded_percentage", 100))
+                    "traded_usdt": float(
+                        stock.get("tradedUsdt", stock.get("traded_usdt", 0))
                     ),
                 }
             )
@@ -677,8 +706,7 @@ _ROOT_SECTION_FIELDS = ("environment", "thread_lock")
 SENSITIVE_CONFIG_FIELDS = frozenset(
     {
         "environment",
-        "assets.traded_quantity",
-        "assets.traded_percentage",
+        "assets.traded_usdt",
         "risk.max_daily_loss_usdt",
         "risk.stop_loss_pct",
         "risk.trailing_stop_loss",

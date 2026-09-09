@@ -462,7 +462,7 @@
         });
         const beforeAssets = JSON.stringify(baseline.assets || []);
         if (beforeAssets !== JSON.stringify(payload.assets || [])) {
-            changed.push("assets (par, quantidade ou percentual)");
+            changed.push("assets (par ou notional USDT)");
         }
         return changed;
     }

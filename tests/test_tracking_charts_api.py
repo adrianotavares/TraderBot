@@ -93,14 +93,12 @@ def _settings(assets=None) -> TradingSettings:
             {
                 "stock_code": "BTC",
                 "operation_code": "BTCUSDT",
-                "traded_quantity": 0.0,
-                "traded_percentage": 50.0,
+                "traded_usdt": 50.0,
             },
             {
                 "stock_code": "ETH",
                 "operation_code": "ETHUSDT",
-                "traded_quantity": 0.0,
-                "traded_percentage": 50.0,
+                "traded_usdt": 50.0,
             },
         ],
     )
