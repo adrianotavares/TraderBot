@@ -85,11 +85,6 @@ class AssetConfig(BaseModel):
             "Limitado ao saldo disponível e ao notional mínimo da exchange"
         ),
     )
-    breakout_price: float = Field(
-        default=0.0,
-        ge=0,
-        description="Preço de rompimento que reativa a estratégia de tendência",
-    )
 
     @model_validator(mode="before")
     @classmethod
@@ -310,7 +305,13 @@ class GridConfig(BaseModel):
 
 
 class BreakoutConfig(BaseModel):
-    enabled: bool = Field(default=True, description="Habilita a detecção de rompimento")
+    enabled: bool = Field(
+        default=True,
+        description=(
+            "Habilita a detecção de rompimento do teto congelado do grid "
+            "(resistência fotografada no primeiro ciclo do canal)"
+        ),
+    )
     adx_period: int = Field(default=14, ge=2, description="Período do ADX")
     adx_min: float = Field(
         default=25.0, ge=0, description="ADX mínimo para confirmar o rompimento"

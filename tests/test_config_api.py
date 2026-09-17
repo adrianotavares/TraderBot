@@ -112,6 +112,7 @@ def test_schema_exposes_sections_and_bounds(config_env):
     assert asset_by_name["traded_usdt"]["label"] == "Traded USDT"
     assert "traded_quantity" not in asset_by_name
     assert "traded_percentage" not in asset_by_name
+    assert "breakout_price" not in asset_by_name
     assert "assets.traded_usdt" in schema["sensitive_fields"]
     assert [f["name"] for f in schema["take_profit"]["fields"]] == ["at", "amount"]
 

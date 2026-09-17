@@ -782,6 +782,14 @@ h1 {
     border-top-style: dashed;
 }
 
+.legend-item.bo {
+    color: var(--md-info);
+}
+
+.legend-item.bo::before {
+    border-top-style: dotted;
+}
+
 .legend-item.flat::before {
     display: none;
 }

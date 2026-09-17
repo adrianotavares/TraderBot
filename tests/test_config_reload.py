@@ -34,7 +34,6 @@ def _base_payload(**overrides):
                 "stock_code": "BTC",
                 "operation_code": "BTCUSDT",
                 "traded_usdt": 10,
-                "breakout_price": 78000,
             }
         ],
     }

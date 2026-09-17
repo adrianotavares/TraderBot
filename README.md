@@ -152,14 +152,10 @@ timing:
 assets:
   - stock_code: BTC
     operation_code: BTCUSDT
-    traded_quantity: 0
-    traded_percentage: 50
-    breakout_price: 78000
+    traded_usdt: 50
   - stock_code: ETH
     operation_code: ETHUSDT
-    traded_quantity: 0
-    traded_percentage: 50
-    breakout_price: 2450
+    traded_usdt: 50
 
 operation:
   cancel_orders_on_shutdown: false
@@ -270,10 +266,10 @@ A cada ciclo o `RegimeDetector` calcula um score (0–4) com base em quatro sina
 
 O grid coloca ordens limit de compra abaixo do preço e venda acima, usando `capital_pct` do saldo em USDT, respeitando `max_grid_trades_per_day` e `max_open_orders`.
 
-**Breakout** reativa `atr_trend` quando:
+**Breakout** reativa `atr_trend` quando o grid tem um teto congelado (`bot_state.grid_resistance`, fotografado no primeiro ciclo do canal) e:
 
 * ADX ≥ `adx_min` e subindo por `adx_rising_bars` candles
-* preço fecha acima de `breakout_price` (por ativo)
+* preço fecha acima desse teto
 * volume ≥ `volume_multiplier` × média (`volume_sma_period`)
 * candle de alta (se `require_bullish_candle: true`)
 
@@ -456,7 +452,7 @@ Suíte atual cobre: `atr_trend`, `regime_detector`, `grid_spot`, `breakout_detec
 7. Verificar `regime_detected`, stop loss, take profit e bloqueios de risco nos logs JSON
 8. Rodar `pytest tests/` sem falhas
 9. Trocar para chaves **mainnet** e `TRADING_ENV=mainnet`
-10. Reduzir exposição inicial (`traded_percentage`) e monitorar o primeiro dia manualmente
+10. Reduzir exposição inicial (`traded_usdt`) e monitorar o primeiro dia manualmente
 
 ## Arquitetura
 

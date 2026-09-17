@@ -52,6 +52,26 @@ def test_apply_dashboard_update_legacy_keys():
     assert updated.assets[0].traded_usdt == 40.0
 
 
+def test_legacy_breakout_price_on_asset_is_ignored():
+    settings = TradingSettings.model_validate(
+        {
+            "environment": "testnet",
+            "strategy": {"main": "moving_average", "fallback": "moving_average"},
+            "risk": {},
+            "timing": {},
+            "assets": [
+                {
+                    "stock_code": "BTC",
+                    "operation_code": "BTCUSDT",
+                    "traded_usdt": 10.0,
+                    "breakout_price": 78000,
+                }
+            ],
+        }
+    )
+    assert "breakout_price" not in settings.assets[0].model_dump()
+
+
 def test_legacy_asset_sizing_is_rejected():
     with pytest.raises(ValidationError, match="traded_usdt"):
         TradingSettings.model_validate(

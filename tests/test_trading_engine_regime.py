@@ -179,3 +179,82 @@ def test_resolve_action_hold_cash_is_pause():
         breakout_cooldown_candles=0,
     )
     assert action == "pause"
+
+
+def test_grid_channel_freezes_on_first_cycle(store):
+    engine = _engine(store)
+    engine.grid_manager = SimpleNamespace(sync_grid=lambda **_kwargs: {"placed": 0})
+    engine._quote_balance = lambda: 1000.0
+    engine._save_state = lambda: None
+    engine.bot.last_stock_account_balance = 0.0
+    engine.bot.open_orders = []
+    engine.bot.min_notional = 10
+    engine.bot.step_size = 0.001
+    engine.bot.time_to_trade = 1
+    engine.bot.time_to_sleep = 0
+
+    engine._run_grid_cycle(
+        RegimeResult(
+            regime="LATERAL",
+            score=4,
+            adx_value=15.0,
+            rsi_value=50.0,
+            support=100.0,
+            resistance=110.0,
+            channel_width_pct=9.5,
+        )
+    )
+    assert engine.state.active_mode == "grid"
+    assert engine.state.grid_support == 100.0
+    assert engine.state.grid_resistance == 110.0
+
+    engine._run_grid_cycle(
+        RegimeResult(
+            regime="LATERAL",
+            score=4,
+            adx_value=15.0,
+            rsi_value=50.0,
+            support=101.0,
+            resistance=125.0,
+            channel_width_pct=21.0,
+        )
+    )
+    assert engine.state.grid_support == 100.0
+    assert engine.state.grid_resistance == 110.0
+
+
+def test_check_breakout_uses_frozen_resistance(store):
+    engine = _engine(store)
+    captured = {}
+
+    def evaluate(_data, price):
+        captured["price"] = price
+        return BreakoutResult(confirmed=True, price=price)
+
+    engine.breakout_detector = SimpleNamespace(enabled=True, evaluate=evaluate)
+    engine.state.grid_resistance = 110.0
+    result = engine._check_breakout()
+    assert captured["price"] == 110.0
+    assert result.confirmed is True
+
+
+def test_check_breakout_skips_without_snapshot(store):
+    engine = _engine(store)
+    engine.breakout_detector = SimpleNamespace(
+        enabled=True,
+        evaluate=lambda *_a, **_k: BreakoutResult(confirmed=True),
+    )
+    assert engine._check_breakout() is None
+
+
+def test_shutdown_grid_clears_frozen_channel(store):
+    engine = _engine(store)
+    engine.grid_manager = SimpleNamespace(shutdown=lambda *_a, **_k: 0)
+    engine.bot.open_orders = []
+    engine.state.active_mode = "grid"
+    engine.state.grid_support = 100.0
+    engine.state.grid_resistance = 110.0
+    engine._shutdown_grid()
+    assert engine.state.grid_support == 0.0
+    assert engine.state.grid_resistance == 0.0
+    assert engine.state.active_mode == "trend"

@@ -649,6 +649,7 @@
         if (role === "tp") return COLORS.up;
         if (role === "sl") return COLORS.down;
         if (role === "sr") return COLORS.warn;
+        if (role === "bo") return COLORS.info;
         return COLORS.entry;
     }
 
@@ -785,9 +786,39 @@
         }
     }
 
+    function pricesMatch(left, right) {
+        var a = Number(left);
+        var b = Number(right);
+        if (!isFinite(a) || !isFinite(b)) return false;
+        var scale = Math.max(Math.abs(a), Math.abs(b), 1);
+        return Math.abs(a - b) / scale < 1e-4;
+    }
+
+    function breakoutLineStyle() {
+        if (LWC.LineStyle && typeof LWC.LineStyle.Dotted === "number") {
+            return LWC.LineStyle.Dotted;
+        }
+        return LWC.LineStyle.Dashed;
+    }
+
     function appendChannelItems(handle, items, asset, precision) {
         if (handle.mode !== "asset") return;
         var current = asset.current_regime;
+        var breakout = Number(asset.breakout_price);
+        var hasBreakout = isFinite(breakout) && breakout > 0;
+        if (hasBreakout) {
+            addPriceLine(
+                handle,
+                breakout,
+                "bo",
+                "Rompimento",
+                breakoutLineStyle()
+            );
+            items.push({
+                cls: "bo",
+                text: "Rompimento " + formatPrice(breakout, precision),
+            });
+        }
         if (!current) return;
         if (current.support != null && isFinite(current.support)) {
             addPriceLine(
@@ -802,7 +833,11 @@
                 text: "Suporte " + formatPrice(current.support, precision),
             });
         }
-        if (current.resistance != null && isFinite(current.resistance)) {
+        if (
+            current.resistance != null &&
+            isFinite(current.resistance) &&
+            !(hasBreakout && pricesMatch(current.resistance, breakout))
+        ) {
             addPriceLine(
                 handle,
                 current.resistance,

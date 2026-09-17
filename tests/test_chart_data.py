@@ -708,8 +708,25 @@ def test_build_chart_payload_assembles_everything(detector, store):
     assert payload["current_regime"]["provisional"] is True
     assert payload["trailing_stop"]
     assert payload["levels"]["take_profit"]["price"] == 107.0
+    assert payload["breakout_price"] == 0.0
     assert payload["error"] is None
 
+
+def test_build_chart_payload_includes_frozen_breakout_price(detector, store):
+    frame = _frame(80)
+    payload = build_chart_payload(
+        frame,
+        stock_code="BTC",
+        operation_code="BTCUSDT",
+        candle_period="4h",
+        risk=_Risk(),
+        detector=detector,
+        store=store,
+        bars=10,
+        now=candle_times(frame)[-1] + PERIOD,
+        breakout_price=45812.5,
+    )
+    assert payload["breakout_price"] == 45812.5
 
 def test_build_chart_payload_without_position_has_no_levels(detector, store):
     frame = _frame(80)

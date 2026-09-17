@@ -311,6 +311,7 @@ def _empty_chart(asset, error: str) -> dict:
         "position": {},
         "levels": None,
         "markers": [],
+        "breakout_price": 0.0,
         "error": error,
     }
 
@@ -423,6 +424,11 @@ def get_tracking_charts(
                     strategy_args=settings.strategy.main_args,
                     regime_config=settings.regime,
                     bars=int(bars),
+                    breakout_price=(
+                        float(state.grid_resistance or 0)
+                        if settings.breakout.enabled
+                        else 0.0
+                    ),
                 )
             )
         except Exception as exc:

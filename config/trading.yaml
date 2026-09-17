@@ -32,25 +32,21 @@ assets:
   traded_usdt: 10.0
   traded_quantity: 0.0
   traded_percentage: 0.0
-  breakout_price: 78000.0
 - stock_code: ETH
   operation_code: ETHUSDT
   traded_usdt: 10.0
   traded_quantity: 0.0
   traded_percentage: 0.0
-  breakout_price: 2450.0
 - stock_code: SOL
   operation_code: SOLUSDT
   traded_usdt: 10.0
   traded_quantity: 0.0
   traded_percentage: 0.0
-  breakout_price: 458.0
 - stock_code: BNB
   operation_code: BNBUSDT
   traded_usdt: 10.0
   traded_quantity: 0.0
   traded_percentage: 0.0
-  breakout_price: 700.0
 operation:
   cancel_orders_on_shutdown: false
   circuit_breaker_errors: 3

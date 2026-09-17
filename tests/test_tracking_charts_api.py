@@ -247,6 +247,29 @@ def test_charts_expose_levels_when_holding(wired):
     assert levels["stop_loss"]["trailing"] is False
 
 
+def test_charts_expose_frozen_breakout_when_enabled(wired):
+    state = wired["store"].load_state("BTCUSDT")
+    state.grid_resistance = 458.0
+    wired["store"].save_state(state)
+
+    payload = app.test_client().get(
+        "/api/tracking/charts?bars=30&operation_code=BTCUSDT"
+    ).get_json()
+    assert payload["assets"][0]["breakout_price"] == 458.0
+
+
+def test_charts_hide_breakout_when_detector_disabled(wired):
+    wired["settings"].breakout.enabled = False
+    state = wired["store"].load_state("BTCUSDT")
+    state.grid_resistance = 458.0
+    wired["store"].save_state(state)
+
+    payload = app.test_client().get(
+        "/api/tracking/charts?bars=30&operation_code=BTCUSDT"
+    ).get_json()
+    assert payload["assets"][0]["breakout_price"] == 0.0
+
+
 def test_charts_trail_stop_from_persisted_peak(wired):
     wired["settings"].risk.trailing_stop_loss = True
     state = wired["store"].load_state("BTCUSDT")

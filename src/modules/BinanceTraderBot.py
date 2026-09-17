@@ -86,7 +86,6 @@ class BinanceTraderBot(PersistedTradeFields):
         regime_config=None,
         grid_config=None,
         breakout_config=None,
-        breakout_price: float = 0.0,
         state_store=None,
     ):
         print("------------------------------------------------")
@@ -178,7 +177,6 @@ class BinanceTraderBot(PersistedTradeFields):
         self.breakout_detector = (
             BreakoutDetector(**breakout_config) if breakout_config else BreakoutDetector(enabled=False)
         )
-        self.breakout_price = breakout_price
 
         self.engine = TradingEngine(
             bot=self,
@@ -190,7 +188,6 @@ class BinanceTraderBot(PersistedTradeFields):
             regime_detector=self.regime_detector,
             grid_manager=self.grid_manager,
             breakout_detector=self.breakout_detector,
-            breakout_price=breakout_price,
         )
         self.engine.bootstrap()
 
@@ -297,8 +294,6 @@ class BinanceTraderBot(PersistedTradeFields):
         )
         if asset is not None:
             self.traded_usdt = asset.traded_usdt
-            self.breakout_price = asset.breakout_price
-            self.engine.breakout_price = asset.breakout_price
 
         risk = settings.risk
         self.time_to_trade = settings.timing.tempo_entre_trades

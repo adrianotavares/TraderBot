@@ -35,7 +35,6 @@ class TradingEngine:
         regime_detector=None,
         grid_manager=None,
         breakout_detector=None,
-        breakout_price: float = 0.0,
         sleep=None,
     ):
         self.bot = bot
@@ -47,7 +46,6 @@ class TradingEngine:
         self.regime_detector = regime_detector
         self.grid_manager = grid_manager
         self.breakout_detector = breakout_detector
-        self.breakout_price = breakout_price
         self._sleep = time.sleep if sleep is None else sleep
         self._last_strategy_decision: StrategyDecision | None = None
         self.state = BotState(operation_code=bot.operation_code)
@@ -121,12 +119,23 @@ class TradingEngine:
             return None
         return self.regime_detector.evaluate(self.bot.stock_data)
 
+    def _frozen_breakout_price(self) -> float:
+        return float(self.state.grid_resistance or 0)
+
+    def _snapshot_grid_channel(self, regime) -> None:
+        """Keep the first valid grid ceiling; a live Donchian would chase new highs."""
+        if float(self.state.grid_resistance or 0) > 0:
+            return
+        self.state.grid_support = float(getattr(regime, "support", None) or 0)
+        self.state.grid_resistance = float(getattr(regime, "resistance", None) or 0)
+
     def _check_breakout(self):
         if not self.breakout_detector or not self.breakout_detector.enabled:
             return None
-        if self.breakout_price <= 0:
+        price = self._frozen_breakout_price()
+        if price <= 0:
             return None
-        return self.breakout_detector.evaluate(self.bot.stock_data, self.breakout_price)
+        return self.breakout_detector.evaluate(self.bot.stock_data, price)
 
     def _can_run_grid(self, regime) -> bool:
         return can_run_grid(
@@ -329,8 +338,9 @@ class TradingEngine:
             payload["channel_width_pct"] = round(regime.channel_width_pct, 2)
         if breakout:
             payload["breakout_confirmed"] = breakout.confirmed
-            if self.breakout_price > 0:
-                payload["breakout_price"] = self.breakout_price
+            frozen = self._frozen_breakout_price()
+            if frozen > 0:
+                payload["breakout_price"] = frozen
             payload["volume_ratio"] = round(breakout.volume_ratio, 2)
 
         log_event(logging.INFO, "Regime detected", **payload)
@@ -383,8 +393,7 @@ class TradingEngine:
 
     def _run_grid_cycle(self, regime):
         self.state.active_mode = "grid"
-        self.state.grid_support = regime.support or 0.0
-        self.state.grid_resistance = regime.resistance or 0.0
+        self._snapshot_grid_channel(regime)
         result = self.grid_manager.sync_grid(
             bot=self.bot,
             order_executor=self.order_executor,

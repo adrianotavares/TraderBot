@@ -40,7 +40,6 @@ assets:
     traded_usdt: 10
     traded_quantity: 0
     traded_percentage: 0
-    breakout_price: 95000
 
 operation:
   cancel_orders_on_shutdown: false

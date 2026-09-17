@@ -21,9 +21,6 @@ _settings_watch: SettingsWatch | None = None
 
 def trader_loop(stock_start: StockStartModel, watch: SettingsWatch, env):
     settings = watch.settings
-    asset_cfg = next(
-        asset for asset in settings.assets if asset.operation_code == stock_start.operationCode
-    )
     bot = BinanceTraderBot(
         stock_code=stock_start.stockCode,
         operation_code=stock_start.operationCode,
@@ -48,7 +45,6 @@ def trader_loop(stock_start: StockStartModel, watch: SettingsWatch, env):
         regime_config=settings.regime.model_dump(),
         grid_config=settings.grid.model_dump(),
         breakout_config=settings.breakout.model_dump(),
-        breakout_price=asset_cfg.breakout_price,
     )
     active_bots.append(bot)
     bot._settings_generation = 0

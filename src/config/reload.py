@@ -68,10 +68,7 @@ def classify_settings_delta(
         previous = old_by_op.get(asset.operation_code)
         if previous is None:
             continue
-        if (
-            previous.traded_usdt != asset.traded_usdt
-            or previous.breakout_price != asset.breakout_price
-        ):
+        if previous.traded_usdt != asset.traded_usdt:
             if "asset_sizing" not in soft:
                 soft.append("asset_sizing")
             break

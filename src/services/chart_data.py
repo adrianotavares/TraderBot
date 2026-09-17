@@ -678,6 +678,7 @@ def build_chart_payload(
     bars: int = DEFAULT_BARS,
     now: Optional[int] = None,
     max_backfill: int = MAX_BACKFILL_PER_REQUEST,
+    breakout_price: float = 0.0,
 ) -> dict:
     period_seconds = candle_period_seconds(candle_period)
     candles = candles_to_series(stock_data)[-bars:]
@@ -734,5 +735,6 @@ def build_chart_payload(
         "position": position,
         "levels": levels,
         "markers": order_markers(orders, operation_code, window),
+        "breakout_price": round(float(breakout_price or 0), 8),
         "error": None,
     }
