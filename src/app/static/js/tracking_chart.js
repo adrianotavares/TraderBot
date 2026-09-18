@@ -13,10 +13,10 @@
     var liveEntries = [];
     var OVERLAY_STORAGE_KEY = "traderbot.chartOverlays";
     var DEFAULT_OVERLAYS = {
-        sma: true,
+        sma: false,
         volume: true,
         rsi: true,
-        ema: false,
+        ema: true,
         adx: false,
     };
     var MAIN_PANE_STRETCH = 6;
@@ -753,12 +753,6 @@
         if (handle.mode !== "asset") return;
         var flags = overlayFlags;
         var meta = overlayMeta(asset);
-        if (flags.sma) {
-            items.push({
-                cls: "sma",
-                text: "SMA " + (meta.sma_period || ""),
-            });
-        }
         if (flags.ema) {
             items.push({
                 cls: "ema-fast",
@@ -776,6 +770,12 @@
             items.push({
                 cls: "rsi",
                 text: "RSI " + (meta.rsi_period || ""),
+            });
+        }
+        if (flags.sma) {
+            items.push({
+                cls: "sma",
+                text: "SMA " + (meta.sma_period || ""),
             });
         }
         if (flags.adx) {

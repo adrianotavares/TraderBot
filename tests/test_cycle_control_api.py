@@ -45,6 +45,11 @@ def test_tracking_page_has_operator_hold_controls(api_env):
     assert 'data-range="8h"' in html
     assert 'data-range="12h"' in html
     assert "defaultRangeKey" in html
+    assert 'id="period-label">1w<' in html
+    overlay_keys = [
+        part.split('"', 1)[0] for part in html.split('data-overlay="')[1:]
+    ]
+    assert overlay_keys[:5] == ["ema", "volume", "rsi", "sma", "adx"]
     response = api_env["client"].post("/api/cycles/control", json={})
     assert response.status_code == 400
 

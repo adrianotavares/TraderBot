@@ -48,7 +48,7 @@
                     aria-expanded="false"
                     aria-controls="period-list"
                 >
-                    <span id="period-label">1m</span>
+                    <span id="period-label">1w</span>
                     <span class="toolbar-caret" aria-hidden="true">▾</span>
                 </button>
                 <div
@@ -87,8 +87,8 @@
                     hidden
                 >
                     <label class="overlay-row">
-                        <input type="checkbox" data-overlay="sma" />
-                        <span>SMA</span>
+                        <input type="checkbox" data-overlay="ema" />
+                        <span>EMA</span>
                     </label>
                     <label class="overlay-row">
                         <input type="checkbox" data-overlay="volume" />
@@ -99,8 +99,8 @@
                         <span>RSI</span>
                     </label>
                     <label class="overlay-row">
-                        <input type="checkbox" data-overlay="ema" />
-                        <span>EMA</span>
+                        <input type="checkbox" data-overlay="sma" />
+                        <span>SMA</span>
                     </label>
                     <label class="overlay-row">
                         <input type="checkbox" data-overlay="adx" />
@@ -200,10 +200,10 @@
         { key: "month", label: "1m", title: "1 mês" },
     ];
     const OVERLAY_SUMMARY = [
-        { key: "sma", label: "SMA" },
+        { key: "ema", label: "EMA" },
         { key: "volume", label: "VOL" },
         { key: "rsi", label: "RSI" },
-        { key: "ema", label: "EMA" },
+        { key: "sma", label: "SMA" },
         { key: "adx", label: "ADX" },
     ];
     const PERIOD_UNITS = { m: 60, h: 3600, d: 86400, w: 604800 };
@@ -231,11 +231,7 @@
     }
 
     function defaultRangeKey() {
-        // Aim for ~80 candles on screen so 5m is readable (8h) and 4h still
-        // defaults to 1 month.
-        const target = 80 * candlePeriodSeconds(CANDLE_PERIOD);
-        const order = ["4h", "8h", "12h", "day", "week", "month"];
-        return order.find((key) => RANGE_WINDOWS[key] >= target) || "month";
+        return "week";
     }
 
     function windowSeconds() {
