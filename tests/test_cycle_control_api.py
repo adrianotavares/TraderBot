@@ -40,6 +40,9 @@ def test_tracking_page_has_operator_hold_controls(api_env):
     assert 'id="cycle-start-btn"' in html
     assert 'id="cycle-hold-btn"' in html
     assert 'id="operator-hold-banner"' in html
+    assert 'id="chart-pane"' in html
+    assert 'id="chart-skeleton"' in html
+    assert "Loading..." in html
     assert "/api/cycles/control" in html
     assert 'data-range="4h"' in html
     assert 'data-range="8h"' in html

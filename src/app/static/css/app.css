@@ -796,6 +796,202 @@ h1 {
     color: var(--md-down);
 }
 
+.chart-skeleton {
+    pointer-events: none;
+}
+
+.chart-card.chart-skeleton[hidden] {
+    display: none;
+}
+
+.chart-skel-line,
+.chart-skel-pill {
+    display: block;
+    border-radius: 4px;
+    background: var(--md-badge-neutral);
+    background-image: linear-gradient(
+        90deg,
+        var(--md-badge-neutral) 20%,
+        var(--md-badge-gray) 50%,
+        var(--md-badge-neutral) 80%
+    );
+    background-size: 200% 100%;
+    animation: chart-skel-shimmer 1.4s ease-in-out infinite;
+}
+
+.chart-skel-ticker {
+    width: 72px;
+    height: 14px;
+}
+
+.chart-skel-price {
+    width: 88px;
+    height: 12px;
+}
+
+.chart-skel-pnl {
+    width: 56px;
+    height: 12px;
+}
+
+.chart-skel-pill {
+    width: 64px;
+    height: 20px;
+    border-radius: 20px;
+}
+
+.chart-skel-legend {
+    width: 52px;
+    height: 10px;
+}
+
+.chart-skel-canvas {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    overflow: hidden;
+    background: var(--md-badge-gray);
+    border-radius: 8px;
+}
+
+.chart-skel-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 5px;
+    flex: 1;
+    min-height: 0;
+    padding: 16px 18px 12px;
+}
+
+.chart-skel-bar {
+    flex: 1;
+    min-width: 0;
+    border-radius: 2px 2px 0 0;
+    background: var(--md-outline);
+    opacity: 0.4;
+    transform-origin: bottom;
+    animation: chart-skel-bar 1.2s ease-in-out infinite;
+}
+
+.chart-skel-bar:nth-child(1) {
+    height: 34%;
+    animation-delay: 0s;
+}
+
+.chart-skel-bar:nth-child(2) {
+    height: 48%;
+    animation-delay: 0.08s;
+}
+
+.chart-skel-bar:nth-child(3) {
+    height: 62%;
+    animation-delay: 0.16s;
+}
+
+.chart-skel-bar:nth-child(4) {
+    height: 41%;
+    animation-delay: 0.24s;
+}
+
+.chart-skel-bar:nth-child(5) {
+    height: 73%;
+    animation-delay: 0.32s;
+}
+
+.chart-skel-bar:nth-child(6) {
+    height: 56%;
+    animation-delay: 0.4s;
+}
+
+.chart-skel-bar:nth-child(7) {
+    height: 68%;
+    animation-delay: 0.48s;
+}
+
+.chart-skel-bar:nth-child(8) {
+    height: 39%;
+    animation-delay: 0.56s;
+}
+
+.chart-skel-bar:nth-child(9) {
+    height: 81%;
+    animation-delay: 0.64s;
+}
+
+.chart-skel-bar:nth-child(10) {
+    height: 52%;
+    animation-delay: 0.72s;
+}
+
+.chart-skel-bar:nth-child(11) {
+    height: 44%;
+    animation-delay: 0.8s;
+}
+
+.chart-skel-bar:nth-child(12) {
+    height: 61%;
+    animation-delay: 0.88s;
+}
+
+.chart-skel-label {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--md-surface-container);
+    background: color-mix(in srgb, var(--md-surface-container) 88%, transparent);
+    color: var(--md-on-surface-variant);
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.chart-skel-icon {
+    font-size: 18px;
+    animation: chart-skel-spin 0.9s linear infinite;
+}
+
+@keyframes chart-skel-shimmer {
+    0% {
+        background-position: 100% 0;
+    }
+    100% {
+        background-position: -100% 0;
+    }
+}
+
+@keyframes chart-skel-bar {
+    0%,
+    100% {
+        opacity: 0.32;
+        transform: scaleY(0.92);
+    }
+    50% {
+        opacity: 0.55;
+        transform: scaleY(1);
+    }
+}
+
+@keyframes chart-skel-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chart-skel-line,
+    .chart-skel-pill,
+    .chart-skel-bar,
+    .chart-skel-icon {
+        animation: none;
+    }
+}
+
 .regime-key {
     display: flex;
     flex-wrap: wrap;
@@ -1480,6 +1676,10 @@ body.page-market .impact-banner {
     min-height: 0;
     display: flex;
     flex-direction: column;
+}
+
+.tracking-chart-pane .chart-card.chart-skeleton[hidden] {
+    display: none;
 }
 
 .tracking-chart-pane .chart-canvas,

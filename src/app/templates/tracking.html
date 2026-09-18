@@ -125,8 +125,57 @@
 </div>
 
 <div class="tracking-body">
-    <section class="tracking-chart-pane" aria-label="Gráfico">
-        <div class="chart-grid" id="chart-grid"></div>
+    <section class="tracking-chart-pane" id="chart-pane" aria-label="Gráfico">
+        <div class="chart-grid" id="chart-grid">
+            <article
+                class="chart-card chart-skeleton"
+                id="chart-skeleton"
+                hidden
+                role="status"
+                aria-live="polite"
+                aria-label="Loading..."
+            >
+                <header class="chart-header">
+                    <div class="chart-title">
+                        <span class="chart-skel-line chart-skel-ticker"></span>
+                        <span class="chart-skel-line chart-skel-price"></span>
+                    </div>
+                    <div class="chart-badges">
+                        <span class="chart-skel-pill"></span>
+                        <span class="chart-skel-line chart-skel-pnl"></span>
+                    </div>
+                </header>
+                <div class="chart-canvas chart-skel-canvas">
+                    <div class="chart-skel-bars" aria-hidden="true">
+                        <span class="chart-skel-bar"></span>
+                        <span class="chart-skel-bar"></span>
+                        <span class="chart-skel-bar"></span>
+                        <span class="chart-skel-bar"></span>
+                        <span class="chart-skel-bar"></span>
+                        <span class="chart-skel-bar"></span>
+                        <span class="chart-skel-bar"></span>
+                        <span class="chart-skel-bar"></span>
+                        <span class="chart-skel-bar"></span>
+                        <span class="chart-skel-bar"></span>
+                        <span class="chart-skel-bar"></span>
+                        <span class="chart-skel-bar"></span>
+                    </div>
+                    <p class="chart-skel-label">
+                        <span
+                            class="material-symbols-outlined chart-skel-icon"
+                            aria-hidden="true"
+                            >progress_activity</span
+                        >
+                        Loading...
+                    </p>
+                </div>
+                <footer class="chart-legend">
+                    <span class="chart-skel-line chart-skel-legend"></span>
+                    <span class="chart-skel-line chart-skel-legend"></span>
+                    <span class="chart-skel-line chart-skel-legend"></span>
+                </footer>
+            </article>
+        </div>
         <div class="regime-key" id="regime-key" hidden>
             <span class="regime-key-label">Regime na faixa inferior:</span>
             <span class="regime-key-item trend">Tendência</span>
@@ -393,12 +442,47 @@
         });
     }
 
+    let chartLoadSeq = 0;
+
     function resetCharts() {
         chartEntries.forEach((entry) => TraderBotChart.dispose(entry));
         chartEntries.clear();
     }
 
+    function setChartPaneBusy(busy) {
+        const pane = document.getElementById("chart-pane");
+        if (!pane) return;
+        if (busy) pane.setAttribute("aria-busy", "true");
+        else pane.removeAttribute("aria-busy");
+    }
+
+    function clearChartGrid() {
+        const grid = document.getElementById("chart-grid");
+        grid.querySelectorAll(":scope > :not(#chart-skeleton)").forEach((node) =>
+            node.remove()
+        );
+    }
+
+    function showChartSkeleton() {
+        if (chartEntries.size) return;
+        const grid = document.getElementById("chart-grid");
+        const skeleton = document.getElementById("chart-skeleton");
+        grid.classList.add("single");
+        grid.querySelectorAll(":scope > .chart-error").forEach((node) => node.remove());
+        if (skeleton) skeleton.hidden = false;
+        document.getElementById("chart-attribution").hidden = true;
+        document.getElementById("regime-key").hidden = true;
+        setChartPaneBusy(true);
+    }
+
+    function hideChartSkeleton() {
+        const skeleton = document.getElementById("chart-skeleton");
+        if (skeleton) skeleton.hidden = true;
+        setChartPaneBusy(false);
+    }
+
     function renderCharts(assets) {
+        hideChartSkeleton();
         const grid = document.getElementById("chart-grid");
         const isEquity = assets.some((asset) => asset.series === "equity");
         grid.classList.toggle("single", Boolean(selectedOperation) || isEquity);
@@ -434,9 +518,10 @@
 
     function showChartMessage(message) {
         resetCharts();
+        hideChartSkeleton();
         const grid = document.getElementById("chart-grid");
         grid.classList.remove("single");
-        grid.innerHTML = "";
+        clearChartGrid();
         const note = document.createElement("p");
         note.className = "chart-error";
         note.textContent = message;
@@ -450,6 +535,8 @@
             showChartMessage("Biblioteca de gráficos não carregada.");
             return;
         }
+        const seq = ++chartLoadSeq;
+        if (!chartEntries.size) showChartSkeleton();
         const params = new URLSearchParams({
             bars: String(CHART_BARS),
         });
@@ -459,6 +546,7 @@
                 `/api/tracking/charts?${params.toString()}`
             );
             const data = await response.json();
+            if (seq !== chartLoadSeq) return;
             if (!response.ok) throw new Error(data.error || "bad status");
             if (!selectedOperation && data.aggregate) {
                 renderCharts([data.aggregate]);
@@ -466,6 +554,7 @@
             }
             renderCharts(data.assets || []);
         } catch (err) {
+            if (seq !== chartLoadSeq) return;
             showChartMessage(`Não foi possível carregar os gráficos: ${err.message}`);
         }
     }
