@@ -510,11 +510,46 @@ def rebuild_outcomes_from_orders(
     return inserted
 
 
+def apply_open_marks(board: dict, holdings: Iterable[dict] | None) -> dict:
+    """Attach live mark and unrealized P&L to open lots.
+
+    Mutates `board` in place so a cached profit payload can refresh prices
+    without rebuilding FIFO.
+    """
+    marks: dict[str, float] = {}
+    for holding in holdings or []:
+        symbol = str(holding.get("operation_code") or "")
+        price = float(holding.get("price") or 0)
+        if symbol and price > 0:
+            marks[symbol] = price
+
+    open_pnl = 0.0
+    marked = False
+    for lot in board.get("open_positions") or []:
+        symbol = str(lot.get("operation_code") or "")
+        quantity = float(lot.get("quantity") or 0)
+        buy_price = float(lot.get("buy_price") or 0)
+        last_price = marks.get(symbol) or 0.0
+        lot["last_price"] = round(last_price, 8) if last_price > 0 else None
+        if last_price > 0 and buy_price > 0 and quantity > 0:
+            pnl_usd = round(quantity * (last_price - buy_price), 4)
+            lot["pnl_usd"] = pnl_usd
+            lot["pnl_pct"] = round(((last_price - buy_price) / buy_price) * 100, 2)
+            open_pnl += pnl_usd
+            marked = True
+        else:
+            lot["pnl_usd"] = None
+            lot["pnl_pct"] = None
+    board["open_pnl_usd"] = round(open_pnl, 2) if marked else None
+    return board
+
+
 def build_outcome_board(
     outcomes: Iterable[dict],
     open_lots: Iterable[dict] | None = None,
     nav_usd: float | None = None,
     warnings: Iterable[dict] | None = None,
+    holdings: Iterable[dict] | None = None,
 ) -> dict:
     operations = []
     total_proceeds = 0.0
@@ -586,7 +621,7 @@ def build_outcome_board(
         total_pnl_pct = round((total_pnl_usd / total_cost) * 100, 2)
 
     proceeds = round(total_proceeds, 2)
-    return {
+    board = {
         "total_cost_usd": round(total_cost, 2),
         "open_cost_usd": round(open_cost, 2),
         "realized_proceeds_usd": proceeds,
@@ -594,7 +629,9 @@ def build_outcome_board(
         "nav_usd": None if nav_usd is None else round(float(nav_usd), 2),
         "total_pnl_usd": round(total_pnl_usd, 2),
         "total_pnl_pct": total_pnl_pct,
+        "open_pnl_usd": None,
         "operations": operations,
         "open_positions": open_positions,
         "warnings": list(warnings or []),
     }
+    return apply_open_marks(board, holdings)

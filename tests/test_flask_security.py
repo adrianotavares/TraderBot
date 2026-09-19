@@ -141,6 +141,8 @@ def test_static_assets_are_public_so_login_page_is_styled(password_env):
     assert b"view_sidebar" in nav_js.data
     assert b"toolbar" in nav_js.data
     assert b"LABELS[next]" in nav_js.data
+    assert b"nav-menu-btn" in nav_js.data
+    assert b".nav-menu-btn" in response.data
 
 
 def test_theme_switcher_is_on_login_and_pages(password_env):
@@ -177,6 +179,9 @@ def test_nav_position_switcher_is_on_pages_not_login(password_env):
         assert "js/nav.js" in body
         assert 'class="nav-label">Tracking</span>' in body
         assert "monitoring" in body
+        assert 'id="nav-menu-btn"' in body
+        assert 'id="site-nav"' in body
+        assert 'aria-label="Abrir menu"' in body
 
 
 def test_login_success_grants_access(password_env):

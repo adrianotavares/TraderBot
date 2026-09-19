@@ -150,6 +150,12 @@ nav a:hover {
     font-size: 22px;
 }
 
+.icon-btn.nav-menu-btn {
+    display: none;
+    flex-shrink: 0;
+    padding: 6px 8px;
+}
+
 nav a.active .nav-icon {
     font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
 }
@@ -533,9 +539,31 @@ h1 {
     box-shadow: var(--md-shadow);
     padding: 14px 16px;
     display: grid;
-    grid-template-columns: auto 1fr auto auto;
+    grid-template-columns: auto 1fr auto;
     gap: 12px;
     align-items: center;
+}
+
+.outcome-figures {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.outcome-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.outcome-group-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 2px;
 }
 
 .outcome-badge {
@@ -1506,10 +1534,6 @@ textarea {
 }
 
 @media (max-width: 640px) {
-    .nav-pos-switch {
-        display: none;
-    }
-
     .toolbar-actions {
         flex-wrap: wrap;
     }
@@ -1539,22 +1563,21 @@ textarea {
         grid-template-columns: auto 1fr;
     }
 
-    .outcome-card .variation {
+    .outcome-card .outcome-figures {
         grid-column: 2;
-    }
-
-    .variation {
-        grid-column: 2;
+        justify-content: flex-start;
     }
 }
 
-/* Tracking fills the viewport. Market is full-width but scrolls with the page. */
-html:has(body.page-tracking) {
+/* Tracking and Profit fill the viewport. Market is full-width but scrolls. */
+html:has(body.page-tracking),
+html:has(body.page-profit) {
     height: 100%;
     overflow: hidden;
 }
 
-body.page-tracking {
+body.page-tracking,
+body.page-profit {
     height: 100vh;
     height: 100dvh;
     overflow: hidden;
@@ -1570,6 +1593,7 @@ body.page-market {
     overflow: visible;
 }
 
+body.page-profit main,
 body.page-tracking main,
 body.page-market main {
     max-width: none;
@@ -1581,6 +1605,7 @@ body.page-market main {
     gap: 10px;
 }
 
+body.page-profit main,
 body.page-tracking main {
     flex: 1;
     min-height: 0;
@@ -1592,6 +1617,7 @@ body.page-market main {
     padding-bottom: 24px;
 }
 
+.profit-top,
 .tracking-top,
 .market-top {
     display: flex;
@@ -1602,32 +1628,141 @@ body.page-market main {
     flex-shrink: 0;
 }
 
+.profit-heading,
 .tracking-heading,
 .market-heading {
     min-width: 0;
 }
 
+.profit-title-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+body.page-profit h1,
 body.page-tracking h1,
 body.page-market h1 {
     margin: 0;
     font-size: 1.25rem;
 }
 
+body.page-profit .subtitle,
 body.page-tracking .subtitle,
 body.page-market .subtitle {
     margin: 2px 0 0;
     font-size: 0.85rem;
 }
 
+body.page-profit .portfolio-summary,
 body.page-tracking .portfolio-summary,
 body.page-market .portfolio-summary {
     margin: 0;
     gap: 24px;
 }
 
+body.page-profit .portfolio-metric.primary .portfolio-value,
 body.page-tracking .portfolio-value,
 body.page-market .portfolio-value {
     font-size: 1.35rem;
+}
+
+body.page-profit .portfolio-metric:not(.primary) .portfolio-value {
+    font-size: 1.05rem;
+}
+
+.profit-open-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.profit-open-scroll .impact-banner {
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.profit-open-scroll .impact-banner[hidden] {
+    display: none;
+}
+
+.profit-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.profit-tabs {
+    display: none;
+    flex-wrap: wrap;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.profit-tabs .icon-btn.active {
+    background: var(--md-nav-hover);
+    color: var(--md-primary);
+    border-color: var(--md-primary);
+}
+
+.profit-grid {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px;
+    align-items: stretch;
+}
+
+.profit-pane {
+    min-width: 0;
+    min-height: 0;
+    margin-top: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.profit-grid > .form-card + .form-card {
+    margin-top: 0;
+}
+
+.profit-pane > .section-title {
+    display: inline-flex;
+    align-items: center;
+    margin: 0 0 12px;
+    padding: 6px 12px;
+    border: 1px solid var(--md-primary);
+    border-radius: 20px;
+    background: var(--md-nav-hover);
+    color: var(--md-primary);
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.profit-pane .outcome-list,
+.profit-pane .empty {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+.profit-pane .profit-open-scroll .outcome-list,
+.profit-pane .profit-open-scroll .empty {
+    flex: none;
+    overflow: visible;
+}
+
+.profit-pane .empty {
+    margin: 0;
+}
+
+.profit-pane .empty[hidden] {
+    display: none;
 }
 
 body.page-tracking .toolbar,
@@ -1742,9 +1877,80 @@ body.page-market .impact-banner {
 }
 
 @media (max-width: 960px) {
+    html:has(body.page-tracking),
+    html:has(body.page-profit) {
+        height: auto;
+        overflow: visible;
+    }
+
+    body.page-tracking,
+    body.page-profit {
+        height: auto;
+        min-height: 100vh;
+        min-height: 100dvh;
+        overflow: visible;
+    }
+
+    body.page-profit main,
+    body.page-tracking main {
+        flex: 1 0 auto;
+        padding-bottom: 24px;
+    }
+
     .tracking-body {
+        flex: none;
         grid-template-columns: 1fr;
-        grid-template-rows: minmax(220px, 1.2fr) minmax(160px, 0.8fr);
+        grid-template-rows: none;
+        grid-auto-rows: auto;
+    }
+
+    .tracking-chart-pane,
+    .tracking-chart-pane .chart-card {
+        min-height: 320px;
+    }
+
+    .tracking-chart-pane .chart-canvas,
+    .tracking-chart-pane .chart-grid.single .chart-canvas {
+        min-height: 260px;
+    }
+
+    .tracking-events-pane .log-list,
+    .tracking-events-pane .empty {
+        flex: none;
+        overflow: visible;
+    }
+
+    .profit-tabs {
+        display: flex;
+    }
+
+    .profit-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .profit-pane > .section-title {
+        display: none;
+    }
+
+    .profit-pane[hidden] {
+        display: none;
+    }
+
+    .profit-body,
+    .profit-grid,
+    .profit-pane,
+    .profit-open-scroll {
+        flex: none;
+        min-height: 0;
+        overflow: visible;
+    }
+
+    .profit-pane .outcome-list,
+    .profit-pane .empty,
+    .profit-open-scroll .outcome-list,
+    .profit-open-scroll .empty {
+        flex: none;
+        overflow: visible;
     }
 }
 
@@ -1848,9 +2054,49 @@ body.page-market .impact-banner {
     color: var(--md-badge-down-fg);
 }
 
-/* Icon rail: desktop only. Phones keep the top bar even if the stored
-   preference is left (the switcher is hidden below 641px). */
-@media (min-width: 641px) {
+@media (max-width: 960px) {
+    .icon-btn.nav-menu-btn {
+        display: inline-flex;
+    }
+
+    .nav-pos-switch {
+        display: none;
+    }
+
+    .app-bar nav {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 4px;
+        padding: 8px 12px 12px;
+        background: var(--md-surface-container);
+        box-shadow: var(--md-shadow);
+        z-index: 11;
+    }
+
+    .app-bar.nav-open nav {
+        display: flex;
+    }
+
+    .app-bar nav a {
+        justify-content: flex-start;
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 12px;
+    }
+
+    .app-bar nav .nav-icon {
+        display: inline-flex;
+    }
+}
+
+/* Icon rail: desktop only. Narrow viewports keep the top bar and hamburger
+   even if the stored preference is left (the switcher is hidden below 961px). */
+@media (min-width: 961px) {
     html[data-nav-pos="left"] body {
         display: flex;
         flex-direction: row;
@@ -1953,11 +2199,13 @@ body.page-market .impact-banner {
     }
 
     html[data-nav-pos="left"] body.page-tracking,
+    html[data-nav-pos="left"] body.page-profit,
     html[data-nav-pos="left"] body.page-market {
         flex-direction: row;
     }
 
-    html[data-nav-pos="left"] body.page-tracking main {
+    html[data-nav-pos="left"] body.page-tracking main,
+    html[data-nav-pos="left"] body.page-profit main {
         height: 100%;
         min-height: 0;
     }

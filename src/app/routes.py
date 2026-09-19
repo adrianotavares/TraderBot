@@ -65,6 +65,7 @@ from services.market_overview import build_market_overview
 from services.order_sync import DEFAULT_PROFIT_CUTOFF, sync_filled_orders_from_binance
 from services.outcome_history import (
     META_REBUILT,
+    apply_open_marks,
     build_outcome_board,
     kind_hints_from_log,
     match_trades_and_open_lots,
@@ -203,7 +204,11 @@ def get_profit_board(force_refresh: bool = False):
             cached_board = cached
 
     if cached_board is not None:
-        _overlay_profit_nav(cached_board, _live_portfolio_snapshot())
+        snapshot = _live_portfolio_snapshot()
+        _overlay_profit_nav(cached_board, snapshot)
+        apply_open_marks(
+            cached_board, None if not snapshot else snapshot.get("assets")
+        )
         return cached_board
 
     # Sync/rebuild outside the lock so Binance latency does not block other readers.
@@ -271,6 +276,7 @@ def get_profit_board(force_refresh: bool = False):
         open_lots=open_lots,
         nav_usd=nav_usd,
         warnings=warnings,
+        holdings=None if not snapshot else snapshot.get("assets"),
     )
     board["sync"] = sync_info
 

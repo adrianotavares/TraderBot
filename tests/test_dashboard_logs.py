@@ -187,14 +187,26 @@ def test_profit_page_renders():
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert "<h1>Profit</h1>" in html
-    assert "Custo realizado" in html
+    assert "Custo realizado" not in html
+    assert "Receita realizada" not in html
     assert "Custo em aberto" in html
     assert "Saldo total" in html
-    assert "Receita realizada" in html
     assert "Valor total agregado" not in html
     assert "P&amp;L realizado" in html
-    assert "Posição aberta" in html
+    assert "P&amp;L em aberto" in html
+    assert "Posições no saldo da Binance" in html
+    assert html.index("P&amp;L em aberto") < html.index("Custo em aberto")
+    assert 'id="refresh-btn"' in html
+    assert 'class="section-title">Posições abertas</h2>' in html
+    assert 'class="section-title">Fechamentos</h2>' in html
+    assert 'id="tab-open"' in html
+    assert 'id="tab-closed"' in html
+    assert 'id="panel-open"' in html
+    assert 'id="panel-closed"' in html
+    assert html.index('id="panel-open"') < html.index('id="panel-closed"')
     assert "profit-warnings" in html
+    assert html.index('id="open-list"') < html.index("profit-warnings")
+    assert html.index("profit-warnings") < html.index('id="panel-closed"')
 
 
 def test_api_profit_returns_classified_operations(monkeypatch):
@@ -277,6 +289,7 @@ def test_get_profit_board_reconciles_live_inventory(monkeypatch, tmp_path):
                     "stock_code": "ETH",
                     "operation_code": "ETHUSDT",
                     "quantity": 0.211,
+                    "price": 2500.0,
                     "last_buy_price": 2414.93,
                 }
             ],
@@ -289,6 +302,8 @@ def test_get_profit_board_reconciles_live_inventory(monkeypatch, tmp_path):
     assert board["open_positions"][0]["source"] == "external"
     assert board["open_positions"][0]["stock_code"] == "ETH"
     assert board["warnings"][0]["code"] == "untracked_inventory"
+    assert board["open_positions"][0]["last_price"] == 2500.0
+    assert board["open_pnl_usd"] == 17.95
     routes._history_cache["ts"] = 0.0
     routes._history_cache["data"] = None
 

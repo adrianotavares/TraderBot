@@ -23,11 +23,21 @@
     </head>
     <body class="{% block body_class %}{% endblock %}">
         <header class="app-bar">
+            <button
+                type="button"
+                class="icon-btn nav-menu-btn"
+                id="nav-menu-btn"
+                aria-expanded="false"
+                aria-controls="site-nav"
+                aria-label="Abrir menu"
+            >
+                <span class="material-symbols-outlined" aria-hidden="true">menu</span>
+            </button>
             <div class="brand">
                 <span class="material-symbols-outlined">candlestick_chart</span>
                 <span class="brand-label">TraderBot</span>
             </div>
-            <nav aria-label="Páginas">
+            <nav id="site-nav" aria-label="Páginas">
                 <a
                     href="{{ url_for('routes.dashboard') }}"
                     class="{{ 'active' if active_page == 'tracking' else '' }}"

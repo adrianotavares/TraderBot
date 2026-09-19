@@ -7,6 +7,7 @@ from services.outcome_history import (
     SOURCE_ORDERS,
     WARN_NO_BALANCE,
     WARN_UNTRACKED,
+    apply_open_marks,
     build_outcome_board,
     match_closed_trades,
     rebuild_outcomes_from_orders,
@@ -410,6 +411,41 @@ def test_build_outcome_board_includes_open_cost_and_skips_unfilled():
     assert len(board["open_positions"]) == 1
     assert board["open_positions"][0]["stock_code"] == "ETH"
     assert board["open_positions"][0]["source"] == SOURCE_ORDERS
+    assert board["open_pnl_usd"] is None
+    assert board["open_positions"][0]["pnl_usd"] is None
+
+
+def test_apply_open_marks_adds_unrealized_pnl_per_lot():
+    board = build_outcome_board(
+        [],
+        open_lots=[
+            {
+                "stock_code": "ETH",
+                "operation_code": "ETHUSDT",
+                "quantity": 0.1,
+                "buy_price": 2000.0,
+                "cost_usd": 200.0,
+            }
+        ],
+        holdings=[
+            {
+                "stock_code": "ETH",
+                "operation_code": "ETHUSDT",
+                "price": 2200.0,
+            }
+        ],
+    )
+    assert board["open_positions"][0]["last_price"] == 2200.0
+    assert board["open_positions"][0]["pnl_usd"] == 20.0
+    assert board["open_positions"][0]["pnl_pct"] == 10.0
+    assert board["open_pnl_usd"] == 20.0
+
+    apply_open_marks(
+        board,
+        [{"operation_code": "ETHUSDT", "price": 1900.0}],
+    )
+    assert board["open_positions"][0]["pnl_usd"] == -10.0
+    assert board["open_pnl_usd"] == -10.0
 
 
 def test_reconcile_open_lots_adds_external_when_live_exceeds_fifo():
