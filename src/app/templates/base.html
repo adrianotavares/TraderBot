@@ -61,17 +61,6 @@
                     <span class="nav-label">Profit</span>
                 </a>
                 <a
-                    href="{{ url_for('routes.balance_page') }}"
-                    class="{{ 'active' if active_page == 'balance' else '' }}"
-                    title="Balance"
-                    {% if active_page == 'balance' %}aria-current="page"{% endif %}
-                >
-                    <span class="material-symbols-outlined nav-icon" aria-hidden="true"
-                        >account_balance_wallet</span
-                    >
-                    <span class="nav-label">Balance</span>
-                </a>
-                <a
                     href="{{ url_for('routes.market_page') }}"
                     class="{{ 'active' if active_page == 'market' else '' }}"
                     title="Market"
@@ -81,6 +70,17 @@
                         >public</span
                     >
                     <span class="nav-label">Market</span>
+                </a>
+                <a
+                    href="{{ url_for('routes.balance_page') }}"
+                    class="{{ 'active' if active_page == 'balance' else '' }}"
+                    title="Balance"
+                    {% if active_page == 'balance' %}aria-current="page"{% endif %}
+                >
+                    <span class="material-symbols-outlined nav-icon" aria-hidden="true"
+                        >account_balance_wallet</span
+                    >
+                    <span class="nav-label">Balance</span>
                 </a>
                 <a
                     href="{{ url_for('routes.config_page') }}"

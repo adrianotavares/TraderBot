@@ -29,9 +29,11 @@ def test_market_page_renders(monkeypatch):
     assert "market-coin-link" in body
     assert "safeHttpUrl" in body
     assert 'href="/market"' in body
-    config_idx = body.find('class="nav-label">Config</span>')
+    profit_idx = body.find('class="nav-label">Profit</span>')
     market_idx = body.find('class="nav-label">Market</span>')
-    assert 0 <= market_idx < config_idx
+    balance_idx = body.find('class="nav-label">Balance</span>')
+    config_idx = body.find('class="nav-label">Config</span>')
+    assert 0 <= profit_idx < market_idx < balance_idx < config_idx
 
 
 def test_market_api_uses_service(monkeypatch):
