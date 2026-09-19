@@ -59,9 +59,36 @@ python src/app/hash_password.py    # obrigatório no compose
 docker compose up -d
 ```
 
-O dashboard fica em `127.0.0.1:5000`. Healthcheck público: `GET /healthz`.
+O dashboard fica em `127.0.0.1:5000`. Healthcheck do processo: `GET /healthz`.
 
-## 3. Dashboard
+## 3. Acesso remoto (Cloudflare Tunnel + Access)
+
+O bot e o dashboard continuam nesta máquina. Um processo à parte (`cloudflared`) abre um túnel de **saída** até a Cloudflare. O celular usa só o navegador — sem app VPN e **sem** abrir a porta 5000 no roteador.
+
+Não mude `FLASK_HOST` para `0.0.0.0` nem o mapeamento `127.0.0.1:5000:5000` do compose. Não coloque `cloudflared` no `docker-compose.yml` (a credencial do túnel não entra no git).
+
+### Nesta máquina
+
+1. Senha do dashboard no `.env` (`python src/app/hash_password.py` → `DASHBOARD_PASSWORD_HASH`).
+2. `FLASK_HOST=127.0.0.1`, `FLASK_PORT=5000`, `FLASK_COOKIE_SECURE=1`.
+3. Dashboard no ar em `http://127.0.0.1:5000`.
+4. Túnel nomeado `traderbot` apontando **somente** para `http://127.0.0.1:5000`, hostname `bot.domogeo.xyz`, serviço systemd de usuário (`~/.config/systemd/user/cloudflared-traderbot.service`). Credenciais em `~/.cloudflared/`, fora do repositório. Binário: `~/.local/bin/cloudflared`.
+
+Com `FLASK_COOKIE_SECURE=1`, o login em `http://127.0.0.1:5000` não mantém a sessão. Use o hostname HTTPS também em casa.
+
+### Na Cloudflare
+
+1. Domínio na conta Cloudflare (registrar da própria Cloudflare evita trocar nameserver).
+2. Zero Trust, plano Free. Identity **One-time PIN**.
+3. Aplicação Self-hosted no hostname do túnel (`bot.domogeo.xyz`).
+4. Policy Allow → Include **Emails** = só `adriano.tavares@gmail.com` (não o domínio `@gmail.com` inteiro).
+5. Access no hostname inteiro (inclui `/healthz`).
+
+No celular (de preferência 4G): PIN no e-mail → `/login` do TraderBot → Tracking / Profit / Config.
+
+Se o PC dormir ou o `cloudflared` cair, o site devolve 502 e o bot também parou. Não suba um segundo `src/main.py` em outro host.
+
+## 4. Dashboard
 
 Barra superior: **Tracking** · **Profit** · **Config**, badge de ambiente (testnet/mainnet) e o seletor de aparência (sol = claro, lua = escuro). A escolha fica no navegador.
 
@@ -92,7 +119,7 @@ Formulário gerado a partir do schema de `config/trading.yaml`.
 
 O painel no topo mostra se o bot está rodando, o ambiente efetivo e se há restart pendente.
 
-## 4. O que o bot faz a cada ciclo
+## 5. O que o bot faz a cada ciclo
 
 Em cada ativo, no intervalo de `tempo_entre_trades`:
 
@@ -104,18 +131,18 @@ Em cada ativo, no intervalo de `tempo_entre_trades`:
    - cinza → pausa.
 4. Stop loss e take profit continuam ativos em todos os modos.
 
-Tamanho da ordem: `traded_quantity` > 0 usa quantidade fixa; `0` usa `traded_percentage` do saldo disponível. Há limite de notional mínimo da Binance, teto diário de perda, máximo de trades e circuit breaker.
+Tamanho da ordem: `traded_usdt` é o notional em USDT de cada compra (limitado ao saldo disponível). `0` desativa entradas neste par. Há limite de notional mínimo da Binance, teto diário de perda, máximo de trades e circuit breaker.
 
-## 5. Antes de ir para mainnet
+## 6. Antes de ir para mainnet
 
 1. `PYTHONPATH=src pytest tests/ -q`
 2. `PYTHONPATH=src python src/backtests_compare.py` — resultado em `data/backtest_compare_4h.csv` (o backtest **não** simula regime, grid nem limites diários).
 3. Rodar **48–72 h na testnet** e revisar `src/logs/trading_bot.json.log`.
-4. Só então: chaves **mainnet**, `TRADING_ENV=mainnet` **e** `environment: mainnet` no YAML, exposição baixa (`traded_percentage`) no primeiro dia.
+4. Só então: chaves **mainnet**, `TRADING_ENV=mainnet` **e** `environment: mainnet` no YAML, exposição baixa (`traded_usdt`) no primeiro dia.
 
-Não reutilize chaves de produção na testnet. Não afrouxe `stop_loss_pct`, `max_daily_loss_usdt`, `max_trades_per_day` ou percentuais sem revisar o impacto.
+Não reutilize chaves de produção na testnet. Não afrouxe `stop_loss_pct`, `max_daily_loss_usdt`, `max_trades_per_day` ou `traded_usdt` sem revisar o impacto.
 
-## 6. Parar e reiniciar
+## 7. Parar e reiniciar
 
 - Dashboard: `Ctrl+C` no processo `src/app/app.py`.
 - Bot: `Ctrl+C` no `./run.sh`. Com `cancel_orders_on_shutdown: true`, o bot tenta cancelar ordens abertas ao sair.
@@ -123,7 +150,7 @@ Não reutilize chaves de produção na testnet. Não afrouxe `stop_loss_pct`, `m
 
 O estado (modo `trend`/`grid`, posição, canal) fica em `data/traderbot.db` e sobrevive ao restart.
 
-## 7. Problemas comuns
+## 8. Problemas comuns
 
 | Sintoma | O que fazer |
 |---------|-------------|
@@ -134,6 +161,8 @@ O estado (modo `trend`/`grid`, posição, canal) fica em `data/traderbot.db` e s
 | Badge mainnet com YAML testnet (ou o inverso) | Alinhe `TRADING_ENV` e `environment` |
 | Config salva mas o par novo não opera | Identidade do ativo exige **restart do bot** |
 | Eventos vazios no Tracking | O bot ainda não rodou um ciclo; confira o terminal do `./run.sh` |
+| Site remoto dá 502 | PC dormiu, dashboard ou `cloudflared` parou; não abra a porta 5000 no roteador |
+| Login local em `127.0.0.1` não gruda | `FLASK_COOKIE_SECURE=1`; use o hostname HTTPS do túnel |
 
 Logs JSON: `src/logs/trading_bot.json.log`. Warnings `RemoteDisconnected` do urllib3 costumam ser retry automático, não falha permanente.
 

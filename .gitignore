@@ -1,6 +1,9 @@
 # Ignore environment variables
 .env
 
+# Cloudflare Tunnel credentials if copied into the repo (live files stay in ~/.cloudflared)
+.cloudflared/
+
 # Runtime data
 data/
 src/logs/
