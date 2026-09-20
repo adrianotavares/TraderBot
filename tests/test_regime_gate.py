@@ -79,6 +79,7 @@ def test_evaluate_variant_reports_cost_against_ungated_run():
     result = evaluate_variant(frame, VARIANTS[0])
     assert result["variant"] == VARIANTS[0].name
     names = {row["strategy"] for row in result["rows"]}
-    assert {"ema_atr", "atr_trend"} <= names
+    assert "atr_trend" in names
+    assert "moving_average_21_55" in names
     for row in result["rows"]:
         assert row["cost_pct"] == row["return_pct"] - row["ungated_return_pct"]

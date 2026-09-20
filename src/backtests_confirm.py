@@ -22,7 +22,14 @@ from backtest.confirm import (
 )
 from config.settings import load_settings
 from services.market_data import MarketDataService
-from strategies.ema_atr import getEmaAtrStrategy
+
+try:
+    from strategies.ema_atr import getEmaAtrStrategy
+except ImportError as exc:  # pragma: no cover - script utilitario
+    raise SystemExit(
+        "backtests_confirm.py precisa de strategies.ema_atr; "
+        "na main use backtests_regime.py para medir o gate GRAY."
+    ) from exc
 
 CACHE_DIR = "data"
 

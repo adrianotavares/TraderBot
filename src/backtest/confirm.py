@@ -14,8 +14,12 @@ from backtest.replay import build_replay_engine
 from backtest.signals import signals_for
 from persistence.state_store import StateStore
 from strategies.atr_trend import getAtrTrendStrategy
-from strategies.ema_atr import getEmaAtrStrategy
 from strategies.moving_average import getMovingAverageTradeStrategy
+
+try:
+    from strategies.ema_atr import getEmaAtrStrategy
+except ImportError:  # estrategia ainda nao esta nesta branch
+    getEmaAtrStrategy = None
 
 _SRC_TESTS = Path(__file__).resolve().parents[1] / "tests"
 if str(_SRC_TESTS) not in sys.path:
@@ -42,10 +46,11 @@ ATR_TREND_ARGS = {
 MA_ARGS = {"fast_window": 21, "slow_window": 55}
 
 STRATEGIES = (
-    ("ema_atr", getEmaAtrStrategy, EMA_ATR_ARGS),
     ("moving_average_21_55", getMovingAverageTradeStrategy, MA_ARGS),
     ("atr_trend", getAtrTrendStrategy, ATR_TREND_ARGS),
 )
+if getEmaAtrStrategy is not None:
+    STRATEGIES = (("ema_atr", getEmaAtrStrategy, EMA_ATR_ARGS),) + STRATEGIES
 
 
 def _isolate_replay_logs() -> None:
@@ -184,8 +189,6 @@ def run_engine_replay(
         regime_enabled=True,
         stop_loss_pct=stop_loss_pct,
         trailing_stop_loss=True,
-        take_profit_at=[take_profit_pct] if take_profit_pct else [],
-        take_profit_amount=[100.0] if take_profit_pct else [],
         max_daily_loss_usdt=10_000.0,
     )
     market = engine.market_data

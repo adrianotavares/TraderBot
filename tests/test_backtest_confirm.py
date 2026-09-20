@@ -11,12 +11,10 @@ from backtest.confirm import (
 )
 from backtest.signals import (
     atr_trend_signals,
-    ema_atr_signals,
     last_bar_matches_live,
     moving_average_signals,
 )
 from strategies.atr_trend import getAtrTrendStrategy
-from strategies.ema_atr import getEmaAtrStrategy
 from strategies.moving_average import getMovingAverageTradeStrategy
 
 
@@ -102,10 +100,15 @@ def test_precomputed_signals_match_live_last_bar():
         live_fn=getMovingAverageTradeStrategy,
         kwargs={"fast_window": 7, "slow_window": 25},
     )
+    ema_atr = pytest.importorskip(
+        "strategies.ema_atr", reason="ema_atr nao esta nesta branch"
+    )
+    from backtest.signals import ema_atr_signals
+
     assert last_bar_matches_live(
         frame,
         builder=ema_atr_signals,
-        live_fn=getEmaAtrStrategy,
+        live_fn=ema_atr.getEmaAtrStrategy,
         kwargs={
             "fast_span": 21,
             "slow_span": 55,

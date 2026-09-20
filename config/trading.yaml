@@ -71,6 +71,8 @@ regime:
   min_lateral_signals: 3
   min_candles: 60
   action_in_lateral: grid
+  action_in_gray: trend
+  require_range_bound_for_lateral: false
 grid:
   enabled: true
   levels: 6
