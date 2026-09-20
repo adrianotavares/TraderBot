@@ -47,5 +47,11 @@ def resolve_regime_action(
             return "grid"
         return "pause"
     if regime and regime.regime == "GRAY":
-        return "pause"
+        # GRAY e o balde residual do classificador: cai aqui quem nao tem
+        # evidencia de lateralidade. Sem historico suficiente pausa sempre;
+        # caso contrario segue a tendencia, senao a estrategia nunca entra.
+        if getattr(regime, "insufficient_data", False):
+            return "pause"
+        if getattr(regime_detector, "action_in_gray", "trend") == "pause":
+            return "pause"
     return "atr_trend"

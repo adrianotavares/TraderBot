@@ -262,6 +262,25 @@ class RegimeConfig(BaseModel):
     action_in_lateral: Literal["pause", "grid", "hold_cash"] = Field(
         default="pause", description="Ação adotada quando o mercado está lateral"
     )
+    action_in_gray: Literal["trend", "pause"] = Field(
+        default="trend",
+        title="Ação no regime indefinido",
+        description=(
+            "GRAY é o regime sem evidência de lateralidade nem de tendência forte. "
+            "Com 'trend' a estratégia roda normalmente; com 'pause' o ciclo é "
+            "ignorado, o que impede entradas de estratégias que sinalizam em um "
+            "único candle. Histórico insuficiente pausa nos dois casos."
+        ),
+    )
+    require_range_bound_for_lateral: bool = Field(
+        default=False,
+        title="Exigir canal para lateral",
+        description=(
+            "Só classifica como lateral quando suporte e resistência têm toques "
+            "suficientes. Em 4h isso quase nunca acontece: ligar derruba o "
+            "lateral para ~1% dos candles e desliga o grid na prática."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_ranges(self):

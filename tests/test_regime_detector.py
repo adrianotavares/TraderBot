@@ -53,6 +53,48 @@ def test_insufficient_data_returns_gray(detector):
     result = detector.evaluate(data)
     assert result.regime == "GRAY"
     assert result.signals.get("insufficient_data") is True
+    assert result.insufficient_data is True
+
+
+def test_evaluated_regime_is_not_flagged_as_insufficient(detector):
+    result = detector.evaluate(_make_trend_data(80, step=3.0))
+    assert result.insufficient_data is False
+
+
+def _quiet_with_single_low(n: int = 80, spike_at: int = 25) -> pd.DataFrame:
+    """Quiet market whose support level is touched only once — not a channel."""
+    rows = []
+    for i in range(n):
+        price = 100.0 + (0.05 if i % 2 else -0.05)
+        low = 99.0 if i == spike_at else price - 0.1
+        rows.append(
+            {
+                "close_price": price,
+                "open_price": price - 0.02,
+                "high_price": price + 0.1,
+                "low_price": low,
+                "volume": 1000,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def test_lateral_needs_a_measured_channel():
+    """Low ADX plus neutral RSI is not enough: the channel must be touched."""
+    data = _quiet_with_single_low()
+    strict = RegimeDetector(
+        enabled=True, min_candles=60, min_lateral_signals=3, range_lookback=60,
+        min_touches=3, require_range_bound_for_lateral=True,
+    )
+    loose = RegimeDetector(
+        enabled=True, min_candles=60, min_lateral_signals=3, range_lookback=60,
+        min_touches=3, require_range_bound_for_lateral=False,
+    )
+    strict_result = strict.evaluate(data)
+    assert strict_result.signals["range_bound"] is False
+    assert strict_result.score >= 3
+    assert strict_result.regime == "GRAY"
+    assert loose.evaluate(data).regime == "LATERAL"
 
 
 def test_lateral_market_high_score(detector):

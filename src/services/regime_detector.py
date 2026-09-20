@@ -18,6 +18,9 @@ class RegimeResult:
     support: float | None = None
     resistance: float | None = None
     channel_width_pct: float = 0.0
+    # GRAY por falta de historico nao e a mesma coisa que GRAY indefinido:
+    # sem candles suficientes o ciclo sempre pausa.
+    insufficient_data: bool = False
 
 
 class RegimeDetector:
@@ -39,6 +42,8 @@ class RegimeDetector:
         min_lateral_signals: int = 3,
         min_candles: int = 60,
         action_in_lateral: Literal["pause", "grid", "hold_cash"] = "pause",
+        action_in_gray: Literal["trend", "pause"] = "trend",
+        require_range_bound_for_lateral: bool = False,
     ):
         self.enabled = enabled
         self.adx_period = adx_period
@@ -56,6 +61,8 @@ class RegimeDetector:
         self.min_lateral_signals = min_lateral_signals
         self.min_candles = min_candles
         self.action_in_lateral = action_in_lateral
+        self.action_in_gray = action_in_gray
+        self.require_range_bound_for_lateral = require_range_bound_for_lateral
 
     def evaluate(self, stock_data: pd.DataFrame) -> RegimeResult:
         if not self.enabled:
@@ -66,6 +73,7 @@ class RegimeDetector:
                 regime="GRAY",
                 score=0,
                 signals={"insufficient_data": True},
+                insufficient_data=True,
             )
 
         df = stock_data.copy()
@@ -79,6 +87,7 @@ class RegimeDetector:
                 regime="GRAY",
                 score=0,
                 signals={"insufficient_data": True},
+                insufficient_data=True,
             )
 
         adx_series = adx(df, period=self.adx_period)
@@ -96,9 +105,11 @@ class RegimeDetector:
         }
         score = sum(1 for v in signals.values() if v)
 
+        lateral_votes = score >= self.min_lateral_signals
+        has_channel = channel["range_bound"] or not self.require_range_bound_for_lateral
         if adx_value > self.adx_trend_threshold and score <= 1:
             regime = "TREND"
-        elif score >= self.min_lateral_signals:
+        elif lateral_votes and has_channel:
             regime = "LATERAL"
         else:
             regime = "GRAY"

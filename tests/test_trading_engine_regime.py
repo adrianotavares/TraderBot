@@ -26,12 +26,45 @@ def test_resolve_action_trend():
     assert action == "atr_trend"
 
 
-def test_resolve_action_pause_gray():
+def test_gray_runs_the_strategy_by_default():
+    """GRAY means "no lateral evidence", so it must not block entries."""
     regime = RegimeResult(regime="GRAY", score=2, adx_value=18.0, rsi_value=50.0)
     action = resolve_regime_action(
         regime,
         None,
-        regime_detector=SimpleNamespace(enabled=True, action_in_lateral="grid"),
+        regime_detector=SimpleNamespace(
+            enabled=True, action_in_lateral="grid", action_in_gray="trend"
+        ),
+        grid_manager=None,
+        breakout_detector=None,
+        breakout_cooldown_candles=0,
+    )
+    assert action == "atr_trend"
+
+
+def test_gray_pauses_when_configured():
+    regime = RegimeResult(regime="GRAY", score=2, adx_value=18.0, rsi_value=50.0)
+    action = resolve_regime_action(
+        regime,
+        None,
+        regime_detector=SimpleNamespace(
+            enabled=True, action_in_lateral="grid", action_in_gray="pause"
+        ),
+        grid_manager=None,
+        breakout_detector=None,
+        breakout_cooldown_candles=0,
+    )
+    assert action == "pause"
+
+
+def test_insufficient_data_pauses_even_with_action_in_gray_trend():
+    regime = RegimeResult(regime="GRAY", score=0, insufficient_data=True)
+    action = resolve_regime_action(
+        regime,
+        None,
+        regime_detector=SimpleNamespace(
+            enabled=True, action_in_lateral="grid", action_in_gray="trend"
+        ),
         grid_manager=None,
         breakout_detector=None,
         breakout_cooldown_candles=0,
