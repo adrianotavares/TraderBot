@@ -25,6 +25,7 @@ class BotState:
     grid_resistance: float = 0.0
     breakout_cooldown_candles: int = 0
     stop_loss_peak_price: float = 0.0
+    need_fresh_long: int = 0
     updated_at: str = ""
 
     def touch(self):
@@ -135,6 +136,7 @@ class StateStore:
             "grid_resistance": "REAL NOT NULL DEFAULT 0",
             "breakout_cooldown_candles": "INTEGER NOT NULL DEFAULT 0",
             "stop_loss_peak_price": "REAL NOT NULL DEFAULT 0",
+            "need_fresh_long": "INTEGER NOT NULL DEFAULT 0",
         }
         for name, ddl in migrations.items():
             if name not in columns:
@@ -208,6 +210,11 @@ class StateStore:
                 if "stop_loss_peak_price" in row.keys()
                 else 0.0
             ),
+            need_fresh_long=(
+                int(row["need_fresh_long"])
+                if "need_fresh_long" in row.keys()
+                else 0
+            ),
             updated_at=row["updated_at"],
         )
 
@@ -220,8 +227,9 @@ class StateStore:
                     operation_code, take_profit_index, last_trade_decision,
                     last_buy_price, last_sell_price, actual_trade_position,
                     active_mode, grid_support, grid_resistance,
-                    breakout_cooldown_candles, stop_loss_peak_price, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    breakout_cooldown_candles, stop_loss_peak_price,
+                    need_fresh_long, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(operation_code) DO UPDATE SET
                     take_profit_index = excluded.take_profit_index,
                     last_trade_decision = excluded.last_trade_decision,
@@ -233,6 +241,7 @@ class StateStore:
                     grid_resistance = excluded.grid_resistance,
                     breakout_cooldown_candles = excluded.breakout_cooldown_candles,
                     stop_loss_peak_price = excluded.stop_loss_peak_price,
+                    need_fresh_long = excluded.need_fresh_long,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -247,6 +256,7 @@ class StateStore:
                     state.grid_resistance,
                     state.breakout_cooldown_candles,
                     state.stop_loss_peak_price,
+                    int(state.need_fresh_long or 0),
                     state.updated_at,
                 ),
             )
@@ -302,9 +312,28 @@ class StateStore:
             rows = conn.execute(query, params).fetchall()
         return [dict(row) for row in rows]
 
-    def clear_outcomes(self) -> None:
+    def clear_outcomes(self, *, keep_live: bool = False) -> None:
         with self._connect() as conn:
-            conn.execute("DELETE FROM trade_outcomes")
+            if keep_live:
+                conn.execute("DELETE FROM trade_outcomes WHERE source != 'live'")
+            else:
+                conn.execute("DELETE FROM trade_outcomes")
+
+    def list_live_outcome_kinds_by_order_id(self) -> dict[int, str]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT order_id, kind FROM trade_outcomes
+                WHERE source = 'live' AND order_id IS NOT NULL
+                """
+            ).fetchall()
+        out: dict[int, str] = {}
+        for row in rows:
+            try:
+                out[int(row["order_id"])] = str(row["kind"])
+            except (TypeError, ValueError):
+                continue
+        return out
 
     def get_meta(self, key: str) -> Optional[str]:
         with self._connect() as conn:

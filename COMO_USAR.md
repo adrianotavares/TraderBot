@@ -130,6 +130,11 @@ Em cada ativo, no intervalo de `tempo_entre_trades`:
    - lateral → grid spot se o canal for válido, senão pausa;
    - cinza → pausa.
 4. Stop loss e take profit continuam ativos em todos os modos.
+   - `stop_loss_pct` = venda a **mercado** (risk overlay).
+   - `acceptable_loss_pct` = só piso do preço **limite** nas vendas da estratégia (não dispara SL).
+   - Com `stop_loss_confirm_with_atr: true` e `atr_trend`, o SL % só executa se o close também romper o trailing ATR.
+   - `take_profit` aceita escada parcial (`amount: 50` deixa runner); lista vazia desliga TP fixo.
+   - Após saída total, a reentrada espera um novo sinal long (`need_fresh_long`).
 
 Tamanho da ordem: `traded_usdt` é o notional em USDT de cada compra (limitado ao saldo disponível). `0` desativa entradas neste par. Há limite de notional mínimo da Binance, teto diário de perda, máximo de trades e circuit breaker.
 

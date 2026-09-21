@@ -38,10 +38,20 @@ CANDLE_INTERVALS = {
 
 class TakeProfitLevel(BaseModel):
     at: float = Field(
-        description="Lucro acumulado (%) que dispara a realização parcial", gt=0
+        description=(
+            "Lucro acumulado (%) desde a compra que dispara este degrau. "
+            "Ex.: 7.0 vende quando o preço sobe 7%."
+        ),
+        gt=0,
     )
     amount: float = Field(
-        description="Percentual da posição vendido neste nível", gt=0, le=100
+        description=(
+            "Percentual da posição atual vendido neste degrau (1–100). "
+            "Use 50 para realizar metade e deixar o restante no trailing ATR / SL; "
+            "100 zera a posição."
+        ),
+        gt=0,
+        le=100,
     )
 
 
@@ -138,15 +148,20 @@ class RiskConfig(BaseModel):
         default=0.5,
         ge=0,
         le=100,
-        description="Perda tolerada (%) antes de considerar a saída da posição",
+        description=(
+            "Piso do preço limite nas vendas da estratégia (sell_limited): "
+            "não aceita limite abaixo de compra × (1 − este %). "
+            "Não dispara venda a mercado — isso é stop_loss_pct."
+        ),
     )
     stop_loss_pct: float = Field(
         default=3.5,
         ge=0,
         le=100,
         description=(
-            "Stop loss (%) abaixo da âncora: preço de compra, "
-            "ou o melhor close da posição se o trailing estiver ligado"
+            "Stop loss a mercado (%) abaixo da âncora: preço de compra, "
+            "ou o melhor close da posição se o trailing estiver ligado. "
+            "Executado por _handle_stop_loss, independente da estratégia."
         ),
     )
     trailing_stop_loss: bool = Field(
@@ -158,8 +173,22 @@ class RiskConfig(BaseModel):
             "Em mercado lateral pode vender num recuo normal após um pico."
         ),
     )
+    stop_loss_confirm_with_atr: bool = Field(
+        default=False,
+        title="Confirmar SL com ATR",
+        description=(
+            "Quando ligado e a estratégia expõe trailing ATR em long, o stop % "
+            "só vende a mercado se o close (e o candle anterior) também quebrarem "
+            "o trailing_stop da atr_trend. Recomendado com strategy.main: atr_trend."
+        ),
+    )
     take_profit: List[TakeProfitLevel] = Field(
-        default_factory=list, description="Escada de realização parcial de lucro"
+        default_factory=list,
+        description=(
+            "Escada de realização parcial: cada item tem 'at' (% lucro) e 'amount' "
+            "(% da posição). Lista vazia desliga o TP fixo (saída só por sinal/SL). "
+            "Ex.: [{at: 7.0, amount: 50.0}] vende metade em +7% e deixa o resto no ATR."
+        ),
     )
     max_daily_loss_usdt: float = Field(
         default=100.0,
@@ -185,7 +214,12 @@ class TimingConfig(BaseModel):
         default=1800, ge=1, description="Segundos entre ciclos de análise"
     )
     delay_entre_ordens: int = Field(
-        default=3600, ge=0, description="Segundos mínimos entre ordens do mesmo ativo"
+        default=3600,
+        ge=0,
+        description=(
+            "Segundos de espera após saída (sell/TP total/SL). "
+            "Após compra o ciclo volta a tempo_entre_trades para o SL continuar ativo."
+        ),
     )
 
     @field_validator("candle_period")
@@ -730,6 +764,7 @@ SENSITIVE_CONFIG_FIELDS = frozenset(
         "risk.max_daily_loss_usdt",
         "risk.stop_loss_pct",
         "risk.trailing_stop_loss",
+        "risk.stop_loss_confirm_with_atr",
     }
 )
 

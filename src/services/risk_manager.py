@@ -21,12 +21,14 @@ class RiskManager:
         circuit_breaker_errors: int = 5,
         circuit_breaker_pause_seconds: int = 300,
         trailing_stop_loss: bool = False,
+        stop_loss_confirm_with_atr: bool = False,
         state_store=None,
         operation_code: str = "",
     ):
         self.acceptable_loss_pct = acceptable_loss_pct / 100
         self.stop_loss_pct = stop_loss_pct / 100
         self.trailing_stop_loss = bool(trailing_stop_loss)
+        self.stop_loss_confirm_with_atr = bool(stop_loss_confirm_with_atr)
         self.take_profit_at = take_profit_at
         self.take_profit_amount = take_profit_amount
         self.max_daily_loss_usdt = max_daily_loss_usdt
@@ -230,6 +232,7 @@ class RiskManager:
         circuit_breaker_errors: int,
         circuit_breaker_pause_seconds: int,
         trailing_stop_loss: bool = False,
+        stop_loss_confirm_with_atr: bool = False,
     ):
         """Update limits without resetting daily counters."""
         self.acceptable_loss_pct = acceptable_loss_pct / 100
@@ -244,6 +247,7 @@ class RiskManager:
         self.circuit_breaker_errors = circuit_breaker_errors
         self.circuit_breaker_pause_seconds = circuit_breaker_pause_seconds
         self.trailing_stop_loss = bool(trailing_stop_loss)
+        self.stop_loss_confirm_with_atr = bool(stop_loss_confirm_with_atr)
 
     def should_stop_trading_daily_loss(self) -> bool:
         self._reset_daily_counters_if_needed()
@@ -283,16 +287,28 @@ class RiskManager:
         last_buy_price: float,
         position_open: bool,
         peak_price: float = 0.0,
+        atr_trailing_stop: float | None = None,
+        atr_trailing_side: str | None = None,
     ) -> bool:
         close_price = stock_data["close_price"].iloc[-1]
         weighted_price = stock_data["close_price"].iloc[-2]
         stop_price = self.stop_loss_price(last_buy_price, peak_price)
-        return bool(
+        pct_hit = bool(
             position_open
             and stop_price > 0
             and close_price < stop_price
             and weighted_price < stop_price
         )
+        if not pct_hit:
+            return False
+        if (
+            self.stop_loss_confirm_with_atr
+            and atr_trailing_side == "long"
+            and atr_trailing_stop is not None
+        ):
+            atr_stop = float(atr_trailing_stop)
+            return bool(close_price < atr_stop and weighted_price < atr_stop)
+        return True
 
     def check_take_profit(
         self,

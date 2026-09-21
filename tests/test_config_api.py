@@ -96,6 +96,9 @@ def test_schema_exposes_sections_and_bounds(config_env):
     assert by_path["risk.stop_loss_pct"]["le"] == 100
     assert by_path["risk.trailing_stop_loss"]["type"] == "bool"
     assert by_path["risk.trailing_stop_loss"]["label"] == "Stop loss trailing"
+    assert by_path["risk.stop_loss_confirm_with_atr"]["type"] == "bool"
+    assert "atr_trend" in by_path["risk.stop_loss_confirm_with_atr"]["description"]
+    assert "stop_loss_pct" in by_path["risk.acceptable_loss_pct"]["description"]
     assert by_path["strategy.main_args"]["type"] == "json"
     assert by_path["risk.stop_loss_pct"]["description"]
     assert schema["strategy_defaults"]["vwap_scalp"]["session_start_utc"] == "12:00"

@@ -493,15 +493,23 @@ def rebuild_outcomes_from_orders(
         return 0
     orders = store.list_orders(since=cutoff_iso)
     hints = kind_hints_from_log(log_path, orders=orders) if log_path else {}
+    # Live rows recorded by the engine already carry the real exit reason —
+    # never let PnL-based classify overwrite them on rebuild.
+    live_kinds = store.list_live_outcome_kinds_by_order_id()
+    for order_id, kind in live_kinds.items():
+        hints[order_id] = kind
     closed = match_closed_trades(
         orders,
         take_profit_at=take_profit_at,
         stop_loss_pct=stop_loss_pct,
         kind_hints=hints,
     )
-    store.clear_outcomes()
+    store.clear_outcomes(keep_live=True)
     inserted = 0
     for row in closed:
+        order_id = row.get("order_id")
+        if order_id is not None and int(order_id) in live_kinds:
+            continue
         if store.record_outcome(row):
             inserted += 1
     store.set_meta(META_REBUILT, "1")

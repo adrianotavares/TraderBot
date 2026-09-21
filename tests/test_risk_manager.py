@@ -345,6 +345,58 @@ def test_trailing_stop_uses_peak_and_never_lowers_anchor():
     assert risk.check_stop_loss(_closes(97.0, 97.0), 100.0, True, peak_price=0.0) is True
 
 
+def test_stop_loss_atr_confirm_blocks_while_above_trailing():
+    risk = RiskManager(
+        acceptable_loss_pct=1.0,
+        stop_loss_pct=2.0,
+        take_profit_at=[],
+        take_profit_amount=[],
+        trailing_stop_loss=False,
+        stop_loss_confirm_with_atr=True,
+    )
+    # Pct stop is 98; price below it but still above ATR trailing 95 → no fire.
+    assert (
+        risk.check_stop_loss(
+            _closes(97.0, 97.0),
+            100.0,
+            True,
+            atr_trailing_stop=95.0,
+            atr_trailing_side="long",
+        )
+        is False
+    )
+    assert (
+        risk.check_stop_loss(
+            _closes(94.0, 94.0),
+            100.0,
+            True,
+            atr_trailing_stop=95.0,
+            atr_trailing_side="long",
+        )
+        is True
+    )
+
+
+def test_stop_loss_atr_confirm_ignored_when_trailing_not_long():
+    risk = RiskManager(
+        acceptable_loss_pct=1.0,
+        stop_loss_pct=2.0,
+        take_profit_at=[],
+        take_profit_amount=[],
+        stop_loss_confirm_with_atr=True,
+    )
+    assert (
+        risk.check_stop_loss(
+            _closes(97.0, 97.0),
+            100.0,
+            True,
+            atr_trailing_stop=95.0,
+            atr_trailing_side="short",
+        )
+        is True
+    )
+
+
 def test_ratchet_peak_tracks_high_close_and_resets_when_flat():
     assert (
         RiskManager.ratchet_peak(

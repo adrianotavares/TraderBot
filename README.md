@@ -134,11 +134,13 @@ strategy:
   fallback_enabled: true
 
 risk:
-  acceptable_loss_pct: 1.5
-  stop_loss_pct: 2.0
+  acceptable_loss_pct: 1.5   # piso do limit sell da estratégia (não é SL a mercado)
+  stop_loss_pct: 2.0         # venda a mercado via risk overlay
+  trailing_stop_loss: true
+  stop_loss_confirm_with_atr: true  # com atr_trend: só SL se close < trailing ATR
   take_profit:
-    - at: 7
-      amount: 100
+    - at: 7.0
+      amount: 50.0           # parcial; resto no ATR / SL. Use [] para desligar TP
   max_daily_loss_usdt: 50.0
   max_trades_per_day: 5
   max_open_orders: 3
@@ -147,7 +149,7 @@ risk:
 timing:
   candle_period: 4h
   tempo_entre_trades: 150
-  delay_entre_ordens: 7200
+  delay_entre_ordens: 7200   # só após saída; pós-compra usa tempo_entre_trades
 
 assets:
   - stock_code: BTC
@@ -206,19 +208,27 @@ Estratégias disponíveis: `atr_trend`, `weapon_candle`, `moving_average`, `movi
 
 ## Estratégia recomendada: ATR Trend 4h
 
-A configuração padrão usa **trend following com trailing stop ATR + filtro SMA200** em candles de 4h:
+A configuração padrão usa **trend following com trailing stop ATR + filtro SMA** em candles de 4h:
 
 ```yaml
 strategy:
   main: atr_trend
   main_args:
     atr_period: 14
-    atr_multiplier: 2.5
-    trend_sma_period: 200
+    atr_multiplier: 3.0
+    trend_sma_period: 100
+risk:
+  stop_loss_pct: 4.0
+  trailing_stop_loss: true
+  stop_loss_confirm_with_atr: true
+  take_profit: []            # ou parcial: [{at: 7.0, amount: 50.0}]
 timing:
   candle_period: 4h
-  tempo_entre_trades: 150   # segundos entre ciclos (ajuste conforme o ativo)
+  tempo_entre_trades: 300    # ciclos / monitoramento de SL
+  delay_entre_ordens: 3600   # espera após saída (não após compra)
 ```
+
+Após saída total (sell / TP 100% / SL), o bot exige um **novo cruzamento long** (`need_fresh_long`) antes de recomprar — evita reentrada imediata enquanto o sinal ATR ainda diz Comprar.
 
 ### Validar antes de operar
 

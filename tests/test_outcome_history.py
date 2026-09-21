@@ -9,6 +9,7 @@ from services.outcome_history import (
     WARN_UNTRACKED,
     apply_open_marks,
     build_outcome_board,
+    classify_kind,
     match_closed_trades,
     rebuild_outcomes_from_orders,
     realized_pnl,
@@ -20,6 +21,75 @@ def test_realized_pnl():
     usd, pct = realized_pnl(0.00018, 72338.01, 77630.0)
     assert usd == 0.9526
     assert pct == 7.32
+
+
+def test_classify_kind_hint_beats_positive_pnl():
+    assert classify_kind(2.0, take_profit_pct=3.0, stop_loss_pct=2.0, hint="stop_loss") == (
+        "stop_loss"
+    )
+
+
+def test_classify_kind_positive_pnl_without_hint_is_not_stop_loss():
+    assert classify_kind(2.0, take_profit_pct=3.0, stop_loss_pct=2.0) == "sell"
+    assert classify_kind(3.0, take_profit_pct=3.0, stop_loss_pct=2.0) == "take_profit"
+
+
+def test_rebuild_preserves_live_kind_with_positive_pnl(tmp_path):
+    store = StateStore(tmp_path / "test.db")
+    store.log_order(
+        "BTCUSDT",
+        {
+            "orderId": 1,
+            "side": "BUY",
+            "type": "LIMIT",
+            "status": "FILLED",
+            "executedQty": "1",
+            "cummulativeQuoteQty": "100",
+            "fills": [{"price": "100"}],
+        },
+        created_at="2026-08-20T16:00:00+00:00",
+    )
+    store.log_order(
+        "BTCUSDT",
+        {
+            "orderId": 2,
+            "side": "SELL",
+            "type": "MARKET",
+            "status": "FILLED",
+            "executedQty": "1",
+            "cummulativeQuoteQty": "102",
+            "fills": [{"price": "102"}],
+        },
+        created_at="2026-08-20T17:00:00+00:00",
+    )
+    assert store.record_outcome(
+        {
+            "kind": "stop_loss",
+            "operation_code": "BTCUSDT",
+            "stock_code": "BTC",
+            "quantity": 1.0,
+            "buy_price": 100.0,
+            "sell_price": 102.0,
+            "pnl_usd": 2.0,
+            "pnl_pct": 2.0,
+            "quote_qty": 102.0,
+            "order_id": 2,
+            "source": "live",
+            "filled": True,
+            "occurred_at": "2026-08-20T17:00:00+00:00",
+        }
+    )
+    rebuild_outcomes_from_orders(
+        store,
+        take_profit_at=[3.0],
+        stop_loss_pct=2.0,
+        cutoff_iso="2026-08-01T00:00:00+00:00",
+        force=True,
+    )
+    rows = store.list_outcomes()
+    assert len(rows) == 1
+    assert rows[0]["kind"] == "stop_loss"
+    assert rows[0]["source"] == "live"
 
 
 def test_log_order_is_idempotent_by_order_id(tmp_path):

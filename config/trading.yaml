@@ -3,21 +3,20 @@ thread_lock: true
 strategy:
   main: atr_trend
   main_args:
-    atr_multiplier: 2.5
+    atr_multiplier: 3.5
     atr_period: 14
-    trend_sma_period: 200
+    trend_sma_period: 100
   fallback: moving_average
   fallback_args:
     fast_window: 21
     slow_window: 55
   fallback_enabled: true
 risk:
+  stop_loss_confirm_with_atr: true
   acceptable_loss_pct: 1.5
-  stop_loss_pct: 2.0
+  stop_loss_pct: 4.0
   trailing_stop_loss: true
-  take_profit:
-  - at: 3.0
-    amount: 100.0
+  take_profit: []
   max_daily_loss_usdt: 10.0
   max_trades_per_day: 5
   max_open_orders: 3
@@ -25,28 +24,26 @@ risk:
 timing:
   candle_period: 4h
   tempo_entre_trades: 300
-  delay_entre_ordens: 1200
+  delay_entre_ordens: 3600
 assets:
 - stock_code: BTC
   operation_code: BTCUSDT
   traded_usdt: 10.0
-  traded_quantity: 0.0
-  traded_percentage: 0.0
 - stock_code: ETH
   operation_code: ETHUSDT
   traded_usdt: 10.0
-  traded_quantity: 0.0
-  traded_percentage: 0.0
 - stock_code: SOL
   operation_code: SOLUSDT
   traded_usdt: 10.0
-  traded_quantity: 0.0
-  traded_percentage: 0.0
 - stock_code: BNB
   operation_code: BNBUSDT
-  traded_usdt: 10.0
-  traded_quantity: 0.0
-  traded_percentage: 0.0
+  traded_usdt: 50.0
+- stock_code: UNI
+  operation_code: UNIUSDT
+  traded_usdt: 50.0
+- stock_code: ZEC
+  operation_code: ZECUSDT
+  traded_usdt: 50.0
 operation:
   cancel_orders_on_shutdown: false
   circuit_breaker_errors: 3

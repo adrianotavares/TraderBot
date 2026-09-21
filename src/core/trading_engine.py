@@ -48,9 +48,61 @@ class TradingEngine:
         self.breakout_detector = breakout_detector
         self._sleep = time.sleep if sleep is None else sleep
         self._last_strategy_decision: StrategyDecision | None = None
+        self._last_strategy_snapshot: dict | None = None
         self.state = BotState(operation_code=bot.operation_code)
         if getattr(bot, "engine", None) is None:
             bot.engine = self
+
+    def _arm_fresh_long(self) -> None:
+        self.state.need_fresh_long = 1
+        log_event(
+            logging.INFO,
+            f"Reentry armed for {self.bot.operation_code}: need fresh long",
+            operation_code=self.bot.operation_code,
+            event="reentry_armed",
+        )
+
+    def _apply_reentry_gate(self, decision: StrategyDecision) -> StrategyDecision:
+        """Block buys until a sell signal is seen after a full exit."""
+        if not self.state.need_fresh_long:
+            return decision
+        if decision.side is False:
+            self.state.need_fresh_long = 0
+            log_event(
+                logging.INFO,
+                f"Reentry cleared for {self.bot.operation_code}: sell seen",
+                operation_code=self.bot.operation_code,
+                event="reentry_cleared",
+            )
+            return decision
+        if decision.side is True and not self.bot.actual_trade_position:
+            log_event(
+                logging.INFO,
+                f"Buy skipped for {self.bot.operation_code}: need fresh long",
+                operation_code=self.bot.operation_code,
+                event="reentry_blocked",
+                reason="need_fresh_long",
+            )
+            return StrategyDecision(
+                None, source=decision.source, reason="need_fresh_long"
+            )
+        return decision
+
+    def _strategy_snapshot(self) -> dict | None:
+        key = strategy_key_for(getattr(self.bot, "main_strategy", None))
+        snap_fn = snapshot_for(key) if key else None
+        if snap_fn is None:
+            return None
+        try:
+            return snap_fn(
+                self.bot.stock_data,
+                **(getattr(self.bot, "main_strategy_args", None) or {}),
+            )
+        except Exception:
+            logging.exception(
+                "Strategy snapshot failed for %s", self.bot.operation_code
+            )
+            return None
 
     def bootstrap(self):
         self.state = self.state_store.load_state(self.bot.operation_code)
@@ -475,11 +527,21 @@ class TradingEngine:
         )
 
     def _handle_stop_loss(self) -> bool:
+        atr_stop = None
+        atr_side = None
+        if getattr(self.risk_manager, "stop_loss_confirm_with_atr", False):
+            snap = self._last_strategy_snapshot or self._strategy_snapshot()
+            self._last_strategy_snapshot = snap
+            if snap:
+                atr_stop = snap.get("trailing_stop")
+                atr_side = snap.get("trailing")
         if not self.risk_manager.check_stop_loss(
             self.bot.stock_data,
             self.bot.last_buy_price,
             self.bot.actual_trade_position,
             peak_price=float(self.state.stop_loss_peak_price or 0),
+            atr_trailing_stop=atr_stop,
+            atr_trailing_side=atr_side,
         ):
             return False
 
@@ -510,11 +572,13 @@ class TradingEngine:
                     "trailing": bool(self.risk_manager.trailing_stop_loss),
                     "peak_price": round(float(self.state.stop_loss_peak_price or 0), 4),
                     "stop_price": round(stop_price, 4),
+                    "exit_reason": "stop_loss",
                 },
             )
             self.bot.actual_trade_position = False
             self.bot.take_profit_index = 0
             self.state.stop_loss_peak_price = 0.0
+            self._arm_fresh_long()
             self._save_state()
             return True
         return False
@@ -554,10 +618,18 @@ class TradingEngine:
         if OrderExecutor.is_filled(order):
             self.bot.take_profit_index = new_index
             self.state_store.log_order(self.bot.operation_code, order)
-            self._record_closed_trade("take_profit", order, extra={"tp_pct": tp_pct})
-            if quantity >= self.bot.last_stock_account_balance * 0.99:
+            self._record_closed_trade(
+                "take_profit",
+                order,
+                extra={"tp_pct": tp_pct, "exit_reason": "take_profit"},
+            )
+            fully_closed = quantity >= self.bot.last_stock_account_balance * 0.99
+            if fully_closed:
                 self.bot.actual_trade_position = False
                 self.state.stop_loss_peak_price = 0.0
+                self._arm_fresh_long()
+            # Stash whether this TP emptied the position for sleep selection.
+            self._last_tp_fully_closed = fully_closed
             self._save_state()
             return True
         return False
@@ -646,7 +718,10 @@ class TradingEngine:
             self.bot.take_profit_index = 0
             self.state.stop_loss_peak_price = 0.0
             self.state_store.log_order(self.bot.operation_code, order)
-            self._record_closed_trade("sell", order)
+            self._record_closed_trade(
+                "sell", order, extra={"exit_reason": "sell"}
+            )
+            self._arm_fresh_long()
         elif OrderExecutor.is_order_active(order):
             pass
         self._save_state()
@@ -685,7 +760,7 @@ class TradingEngine:
 
         if self._handle_stop_loss():
             print("\nSTOP LOSS finalizado.\n")
-            self.bot.time_to_sleep = self.bot.time_to_trade
+            self.bot.time_to_sleep = self.bot.delay_after_order
             self._save_state()
             self._log_cycle_summary(
                 regime=None,
@@ -698,7 +773,11 @@ class TradingEngine:
 
         if self.bot.actual_trade_position and self._handle_take_profit():
             print("\nTAKE PROFIT finalizado.\n")
-            self.bot.time_to_sleep = self.bot.delay_after_order
+            if getattr(self, "_last_tp_fully_closed", False):
+                self.bot.time_to_sleep = self.bot.delay_after_order
+            else:
+                # Partial TP: keep monitoring the runner on the normal cycle.
+                self.bot.time_to_sleep = self.bot.time_to_trade
             self._save_state()
             self._log_cycle_summary(
                 regime=None,
@@ -803,6 +882,7 @@ class TradingEngine:
             fallback_strategy=self.bot.fallback_strategy,
             fallback_strategy_args=self.bot.fallback_strategy_args,
         )
+        self._last_strategy_snapshot = self._strategy_snapshot()
         if operator_hold and decision.side is True:
             log_event(
                 logging.INFO,
@@ -814,6 +894,7 @@ class TradingEngine:
             decision = StrategyDecision(
                 None, source=decision.source, reason="operator_hold"
             )
+        decision = self._apply_reentry_gate(decision)
         self._last_strategy_decision = decision
         self.bot.last_trade_decision = decision.side
 
@@ -837,7 +918,8 @@ class TradingEngine:
             self._sleep(2)
             self.update_all_data()
             self.bot.printStock()
-            self.bot.time_to_sleep = self.bot.delay_after_order
+            # After buy, keep the short cycle so SL/TP stay responsive.
+            self.bot.time_to_sleep = self.bot.time_to_trade
             final_action = "Comprar"
 
         elif self.bot.actual_trade_position and decision.side is False:
