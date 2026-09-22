@@ -12,11 +12,13 @@ strategy:
     slow_window: 55
   fallback_enabled: true
 risk:
-  stop_loss_confirm_with_atr: true
   acceptable_loss_pct: 1.5
   stop_loss_pct: 4.0
   trailing_stop_loss: true
-  take_profit: []
+  stop_loss_confirm_with_atr: true
+  take_profit:
+  - at: 7.0
+    amount: 100.0
   max_daily_loss_usdt: 10.0
   max_trades_per_day: 5
   max_open_orders: 3
@@ -28,13 +30,13 @@ timing:
 assets:
 - stock_code: BTC
   operation_code: BTCUSDT
-  traded_usdt: 10.0
+  traded_usdt: 100.0
 - stock_code: ETH
   operation_code: ETHUSDT
-  traded_usdt: 10.0
+  traded_usdt: 100.0
 - stock_code: SOL
   operation_code: SOLUSDT
-  traded_usdt: 10.0
+  traded_usdt: 100.0
 - stock_code: BNB
   operation_code: BNBUSDT
   traded_usdt: 50.0
