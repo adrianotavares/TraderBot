@@ -13,7 +13,7 @@ strategy:
   fallback_enabled: true
 risk:
   acceptable_loss_pct: 1.5
-  stop_loss_pct: 4.0
+  stop_loss_pct: 5.0
   trailing_stop_loss: true
   stop_loss_confirm_with_atr: true
   take_profit:
@@ -39,13 +39,13 @@ assets:
   traded_usdt: 100.0
 - stock_code: BNB
   operation_code: BNBUSDT
-  traded_usdt: 50.0
+  traded_usdt: 100.0
 - stock_code: UNI
   operation_code: UNIUSDT
-  traded_usdt: 50.0
+  traded_usdt: 100.0
 - stock_code: ZEC
   operation_code: ZECUSDT
-  traded_usdt: 50.0
+  traded_usdt: 100.0
 operation:
   cancel_orders_on_shutdown: false
   circuit_breaker_errors: 3
@@ -59,8 +59,8 @@ regime:
   adx_lateral_threshold: 20.0
   adx_trend_threshold: 25.0
   rsi_period: 14
-  rsi_low: 35.0
-  rsi_high: 65.0
+  rsi_low: 30.0
+  rsi_high: 70.0
   ema_fast: 20
   ema_slow: 50
   ema_compression_pct: 0.5
