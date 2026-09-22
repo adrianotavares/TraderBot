@@ -1,4 +1,5 @@
 import logging
+import math
 from typing import Any, Iterable
 
 from binance.enums import SIDE_BUY, SIDE_SELL
@@ -15,10 +16,11 @@ from services.portfolio import (
     quote_from_pair,
 )
 
-WEIGHT_SUM_TOLERANCE = 0.01
+ADJUSTMENT_TOLERANCE = 0.01
 QUOTE_BUFFER = 0.002
 CONFIRM_REBALANCE = "BALANCE"
 CONFIRM_LIQUIDATE = "LIQUIDATE"
+BUFFER_WARNING = "Compras podem ser reduzidas em até 0,2% por folga de taxa"
 
 
 class PortfolioActionError(ValueError):
@@ -74,11 +76,11 @@ def _validate_symbols(symbols: Any, allowlist: set[str]) -> list[str]:
     return seen
 
 
-def _validate_weights(weights: Any, allowlist: set[str]) -> dict[str, float]:
-    if not isinstance(weights, dict) or not weights:
-        raise PortfolioActionError("Informe os pesos alvo", blockers=["weights"])
+def _validate_adjustments(adjustments: Any, allowlist: set[str]) -> dict[str, float]:
+    if not isinstance(adjustments, dict):
+        raise PortfolioActionError("Informe os ajustes em USDT", blockers=["adjustments"])
     parsed: dict[str, float] = {}
-    for key, raw in weights.items():
+    for key, raw in adjustments.items():
         symbol = str(key or "").strip().upper()
         if symbol not in allowlist:
             raise PortfolioActionError(
@@ -89,21 +91,15 @@ def _validate_weights(weights: Any, allowlist: set[str]) -> dict[str, float]:
             value = float(raw)
         except (TypeError, ValueError) as exc:
             raise PortfolioActionError(
-                f"Peso inválido para {symbol}",
+                f"Ajuste inválido para {symbol}",
                 blockers=[symbol],
             ) from exc
-        if value < 0:
+        if not math.isfinite(value):
             raise PortfolioActionError(
-                f"Peso negativo para {symbol}",
+                f"Ajuste inválido para {symbol}",
                 blockers=[symbol],
             )
         parsed[symbol] = value
-    total = sum(parsed.values())
-    if abs(total - 100.0) > WEIGHT_SUM_TOLERANCE:
-        raise PortfolioActionError(
-            f"Soma dos pesos deve ser 100% (atual {total:.2f}%)",
-            blockers=["sum"],
-        )
     for symbol in allowlist:
         parsed.setdefault(symbol, 0.0)
     return parsed
@@ -270,17 +266,19 @@ def preview_liquidate(client, assets: Iterable[Any], symbols: Any) -> dict:
     }
 
 
-def preview_rebalance(client, assets: Iterable[Any], weights: Any) -> dict:
-    allowlist = _allowlist(assets)
-    parsed = _validate_weights(weights, allowlist)
-    snapshot = _snapshot(client, assets)
-    nav = snapshot["nav"]
+def _plan_rebalance(snapshot: dict, adjustments: dict[str, float]) -> dict:
     sells: list[dict] = []
     buys: list[dict] = []
+    legs: list[tuple[str, dict, float]] = []
     for holding in snapshot["holdings"]:
         symbol = holding["operation_code"]
-        target = nav * (parsed[symbol] / 100.0)
-        delta = target - holding["usd_value"]
+        delta = float(adjustments.get(symbol, 0.0))
+        if delta < -(float(holding["usd_value"]) + ADJUSTMENT_TOLERANCE):
+            raise PortfolioActionError(
+                f"Ajuste de {symbol} vende mais que a posição "
+                f"({float(holding['usd_value']):.2f} USDT)",
+                blockers=[symbol],
+            )
         min_notional = holding["min_notional"]
         if abs(delta) < min_notional or holding["price"] <= 0:
             skipped = _skipped(
@@ -305,6 +303,7 @@ def preview_rebalance(client, assets: Iterable[Any], weights: Any) -> dict:
                 sells.append(_skipped(holding, SIDE_SELL, "dust"))
             else:
                 sells.append(_order_payload(holding, SIDE_SELL, qty))
+                legs.append((SIDE_SELL, holding, qty))
         else:
             qty = _size_buy(
                 raw_qty,
@@ -317,13 +316,53 @@ def preview_rebalance(client, assets: Iterable[Any], weights: Any) -> dict:
                 buys.append(_skipped(holding, SIDE_BUY, "dust"))
             else:
                 buys.append(_order_payload(holding, SIDE_BUY, qty))
+                legs.append((SIDE_BUY, holding, qty))
+    sell_proceeds = 0.0
+    buy_spend = 0.0
+    for holding in snapshot["holdings"]:
+        delta = float(adjustments.get(holding["operation_code"], 0.0))
+        if holding["price"] <= 0 or abs(delta) < holding["min_notional"]:
+            continue
+        if delta < 0:
+            sell_proceeds += min(-delta, float(holding["usd_value"]))
+        else:
+            buy_spend += delta
+    available = float(snapshot["quote_qty"]) + sell_proceeds
+    if buy_spend > available + ADJUSTMENT_TOLERANCE:
+        raise PortfolioActionError(
+            f"Compras ({buy_spend:.2f} USDT) excedem o caixa disponível "
+            f"({available:.2f} USDT)",
+            blockers=["quote"],
+        )
+    sell_notional = sum(row["notional"] for row in sells if not row.get("skipped"))
+    buy_notional = sum(row["notional"] for row in buys if not row.get("skipped"))
+    buffered = float(snapshot["quote_qty"]) * (1.0 - QUOTE_BUFFER) + sell_notional
+    warning = ""
+    if buy_notional > buffered + ADJUSTMENT_TOLERANCE:
+        warning = BUFFER_WARNING
     return {
-        "nav": round(nav, 8),
+        "sells": sells,
+        "buys": buys,
+        "legs": legs,
+        "warning": warning,
+    }
+
+
+def preview_rebalance(client, assets: Iterable[Any], adjustments: Any) -> dict:
+    allowlist = _allowlist(assets)
+    parsed = _validate_adjustments(adjustments, allowlist)
+    snapshot = _snapshot(client, assets)
+    planned = _plan_rebalance(snapshot, parsed)
+    sells = planned["sells"]
+    buys = planned["buys"]
+    return {
+        "nav": round(snapshot["nav"], 8),
         "quote_asset": snapshot["quote_asset"],
-        "weights": parsed,
+        "adjustments": parsed,
         "orders": sells + buys,
         "sells": sells,
         "buys": buys,
+        "warning": planned["warning"],
         "blockers": [],
     }
 
@@ -485,19 +524,20 @@ def execute_liquidate(
 def execute_rebalance(
     client,
     assets: Iterable[Any],
-    weights: Any,
+    adjustments: Any,
     store,
     confirm: str,
 ) -> dict:
     _require_confirm(confirm, CONFIRM_REBALANCE)
     allowlist = _allowlist(assets)
-    parsed = _validate_weights(weights, allowlist)
+    parsed = _validate_adjustments(adjustments, allowlist)
+    _plan_rebalance(_snapshot(client, assets, free_only=True), parsed)
     store.set_action_hold(True)
     log_event(
         logging.INFO,
         "Portfolio rebalance started",
         event="portfolio_rebalance",
-        weights=parsed,
+        adjustments=parsed,
         hold=True,
     )
     filled: list[dict] = []
@@ -508,48 +548,14 @@ def execute_rebalance(
             _cancel_open(client, symbol, stock_code, filters)
         snapshot = _snapshot(client, assets, free_only=True)
         nav = snapshot["nav"]
-        plan: list[tuple[str, dict, float]] = []
-        for holding in snapshot["holdings"]:
-            symbol = holding["operation_code"]
-            target = nav * (parsed[symbol] / 100.0)
-            delta = target - holding["usd_value"]
-            min_notional = holding["min_notional"]
-            if abs(delta) < min_notional or holding["price"] <= 0:
-                skipped.append(
-                    _skipped(
-                        holding,
-                        SIDE_SELL if delta < 0 else SIDE_BUY,
-                        "dust" if holding["price"] > 0 else "no price",
-                    )
-                )
-                continue
-            raw_qty = abs(delta) / holding["price"]
-            if delta < 0:
-                qty = _size_sell(
-                    min(raw_qty, holding["quantity"]),
-                    holding["price"],
-                    holding["step_size"],
-                    min_notional,
-                )
-                if qty <= 0:
-                    skipped.append(_skipped(holding, SIDE_SELL, "dust"))
-                else:
-                    plan.append((SIDE_SELL, holding, qty))
-            else:
-                qty = _size_buy(
-                    raw_qty,
-                    holding["price"],
-                    holding["step_size"],
-                    min_notional,
-                    max_quote=abs(delta),
-                )
-                if qty <= 0:
-                    skipped.append(_skipped(holding, SIDE_BUY, "dust"))
-                else:
-                    plan.append((SIDE_BUY, holding, qty))
-
-        sells = [(side, holding, qty) for side, holding, qty in plan if side == SIDE_SELL]
-        buys = [(side, holding, qty) for side, holding, qty in plan if side == SIDE_BUY]
+        planned = _plan_rebalance(snapshot, parsed)
+        skipped = [
+            row
+            for row in planned["sells"] + planned["buys"]
+            if row.get("skipped")
+        ]
+        sells = [leg for leg in planned["legs"] if leg[0] == SIDE_SELL]
+        buys = [leg for leg in planned["legs"] if leg[0] == SIDE_BUY]
 
         def _run_leg(side: str, holding: dict, qty: float):
             try:
@@ -631,9 +637,19 @@ def execute_rebalance(
             "hold": False,
             "orders": filled,
             "skipped": skipped,
-            "weights": parsed,
+            "adjustments": parsed,
+            "warning": planned["warning"],
             "nav": round(nav, 8),
         }
+    except PortfolioActionError:
+        store.set_action_hold(False)
+        log_event(
+            logging.WARNING,
+            "Portfolio rebalance rejected; hold released",
+            event="portfolio_rebalance",
+            hold=False,
+        )
+        raise
     except Exception:
         log_event(
             logging.ERROR,

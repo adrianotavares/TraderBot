@@ -18,7 +18,12 @@ ASSETS = [
     SimpleNamespace(stock_code="XRP", operation_code="XRPUSDT", traded_usdt=0),
 ]
 
-WEIGHTS_100 = {"BTCUSDT": 40, "ETHUSDT": 30, "SOLUSDT": 20, "XRPUSDT": 10}
+ADJUSTMENTS_SPLIT = {
+    "BTCUSDT": -2000,
+    "ETHUSDT": 1000,
+    "SOLUSDT": 1500,
+    "XRPUSDT": 500,
+}
 
 
 class FakeSpot:
@@ -121,14 +126,39 @@ class FakeSpot:
         return order
 
 
-def test_preview_rebalance_rejects_sum_not_100():
-    client = FakeSpot()
-    with pytest.raises(PortfolioActionError, match="100%"):
-        preview_rebalance(
-            client,
-            ASSETS,
-            {"BTCUSDT": 40, "ETHUSDT": 30, "SOLUSDT": 10, "XRPUSDT": 10},
-        )
+def test_execute_rebalance_rejects_oversell_without_hold(tmp_path):
+    store = StateStore(tmp_path / "t.db")
+    with pytest.raises(PortfolioActionError, match="vende mais"):
+        execute_rebalance(FakeSpot(), ASSETS, {"BTCUSDT": -7000}, store, "BALANCE")
+    assert store.is_action_hold() is False
+
+
+def test_preview_rebalance_rejects_oversell():
+    with pytest.raises(PortfolioActionError, match="vende mais"):
+        preview_rebalance(FakeSpot(), ASSETS, {"BTCUSDT": -7000})
+
+
+def test_preview_rebalance_rejects_buys_without_quote():
+    with pytest.raises(PortfolioActionError, match="caixa disponível"):
+        preview_rebalance(FakeSpot(), ASSETS, {"SOLUSDT": 2000})
+
+
+def test_preview_rebalance_partial_buy_does_not_require_full_allocation():
+    preview = preview_rebalance(FakeSpot(), ASSETS, {"SOLUSDT": 100})
+    live = [row for row in preview["orders"] if not row.get("skipped")]
+    assert len(live) == 1
+    assert live[0]["side"] == "BUY"
+    assert live[0]["operation_code"] == "SOLUSDT"
+    assert live[0]["notional"] == pytest.approx(100.0, rel=0.01)
+    assert preview["warning"] == ""
+
+
+def test_preview_rebalance_warns_when_buys_eat_quote_buffer():
+    preview = preview_rebalance(FakeSpot(), ASSETS, {"SOLUSDT": 1000})
+    assert preview["warning"]
+    live = [row for row in preview["orders"] if not row.get("skipped")]
+    assert len(live) == 1
+    assert live[0]["notional"] == pytest.approx(1000.0, rel=0.01)
 
 
 def test_preview_rebalance_rejects_unknown_symbol():
@@ -137,7 +167,7 @@ def test_preview_rebalance_rejects_unknown_symbol():
 
 
 def test_preview_rebalance_sells_then_buys():
-    preview = preview_rebalance(FakeSpot(), ASSETS, WEIGHTS_100)
+    preview = preview_rebalance(FakeSpot(), ASSETS, ADJUSTMENTS_SPLIT)
     sides = [row["side"] for row in preview["orders"] if not row.get("skipped")]
     assert sides[0] == "SELL"
     assert "BUY" in sides
@@ -150,7 +180,7 @@ def test_preview_rebalance_sells_then_buys():
 def test_execute_rebalance_sells_before_buys_and_ignores_yaml_weights(tmp_path):
     client = FakeSpot()
     store = StateStore(tmp_path / "t.db")
-    result = execute_rebalance(client, ASSETS, WEIGHTS_100, store, "BALANCE")
+    result = execute_rebalance(client, ASSETS, ADJUSTMENTS_SPLIT, store, "BALANCE")
     assert result["ok"] is True
     assert store.is_action_hold() is False
     sides = [order["side"] for order in client.created]
@@ -171,8 +201,13 @@ def test_execute_rebalance_sells_before_buys_and_ignores_yaml_weights(tmp_path):
 def test_execute_rebalance_aborts_on_second_sell_and_keeps_hold(tmp_path):
     client = FakeSpot(fail_at="ETHUSDT")
     store = StateStore(tmp_path / "t.db")
-    weights = {"BTCUSDT": 10, "ETHUSDT": 10, "SOLUSDT": 40, "XRPUSDT": 40}
-    result = execute_rebalance(client, ASSETS, weights, store, "BALANCE")
+    adjustments = {
+        "BTCUSDT": -5000,
+        "ETHUSDT": -1000,
+        "SOLUSDT": 3500,
+        "XRPUSDT": 3500,
+    }
+    result = execute_rebalance(client, ASSETS, adjustments, store, "BALANCE")
     assert result["ok"] is False
     assert result["partial"] is True
     assert result["aborted_at"] == "ETHUSDT"
@@ -182,7 +217,7 @@ def test_execute_rebalance_aborts_on_second_sell_and_keeps_hold(tmp_path):
 
 def test_dust_below_min_notional_is_skipped():
     client = FakeSpot(min_notional=50_000)
-    preview = preview_rebalance(client, ASSETS, WEIGHTS_100)
+    preview = preview_rebalance(client, ASSETS, ADJUSTMENTS_SPLIT)
     skipped = [row for row in preview["orders"] if row.get("skipped")]
     assert skipped
     assert {row["reason"] for row in skipped} <= {"dust", "no price"}

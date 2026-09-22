@@ -40,22 +40,30 @@ def test_balance_page_renders(api_env):
     assert response.status_code == 200
     body = response.get_data(as_text=True)
     assert "Balancear" in body
+    assert "Ajuste USDT" in body
     assert "Liquidate" in body
     assert "traded_usdt" in body
 
 
-def test_rebalance_preview_returns_400_on_bad_weights(api_env, monkeypatch):
-    def boom(*_args, **_kwargs):
-        raise PortfolioActionError("Soma dos pesos deve ser 100%", blockers=["sum"])
+def test_rebalance_preview_returns_400_on_bad_adjustments(api_env, monkeypatch):
+    seen = {}
+
+    def boom(_client, _assets, adjustments):
+        seen["adjustments"] = adjustments
+        raise PortfolioActionError(
+            "Compras excedem o caixa disponível",
+            blockers=["quote"],
+        )
 
     monkeypatch.setattr("routes.preview_rebalance", boom)
     response = api_env["client"].post(
         "/api/portfolio/rebalance/preview",
-        json={"weights": {"BTCUSDT": 90}},
+        json={"adjustments": {"BTCUSDT": 90}},
     )
     assert response.status_code == 400
     payload = response.get_json()
-    assert payload["blockers"] == ["sum"]
+    assert payload["blockers"] == ["quote"]
+    assert seen["adjustments"] == {"BTCUSDT": 90}
 
 
 def test_liquidate_preview_empty_list_400(api_env, monkeypatch):

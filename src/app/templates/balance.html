@@ -3,7 +3,7 @@
 {% block content %}
 <h1>Balance</h1>
 <p class="subtitle">
-    Ajustar pesos da carteira ou liquidar pares do YAML. Não altera
+    Ajustar posições da carteira ou liquidar pares do YAML. Não altera
     <code>traded_usdt</code> no Config. Ordens são MARKET; o bot pausa
     os ciclos enquanto a ação corre.
 </p>
@@ -44,8 +44,8 @@
 <section class="form-card">
     <h2 class="section-title">Balancear</h2>
     <p class="field-help">
-        Uma linha por par configurado. O alvo % é one-shot: soma deve ser 100.
-        Campos começam no peso atual (nenhuma ordem se você não mudar).
+        Uma linha por par configurado. O ajuste em USDT soma no valor atual.
+        0 não gera ordem. Positivo compra; negativo vende.
     </p>
     <div class="table-wrap">
         <table class="balance-table" id="balance-table">
@@ -55,6 +55,7 @@
                     <th class="num">Qty</th>
                     <th class="num">Valor</th>
                     <th class="num">Peso atual</th>
+                    <th class="num">Ajuste USDT</th>
                     <th class="num">Alvo %</th>
                 </tr>
             </thead>
@@ -163,25 +164,57 @@
         return (Number(usdValue) / nav) * 100;
     }
 
-    function parseWeight(input) {
+    const ADJUST_TOLERANCE = 0.01;
+
+    function parseAdjust(input) {
         const value = Number.parseFloat(String(input.value).replace(",", "."));
         return Number.isFinite(value) ? value : 0;
     }
 
-    function weightSum() {
-        return Array.from(document.querySelectorAll(".weight-input")).reduce(
-            (acc, input) => acc + parseWeight(input),
-            0
-        );
+    function quoteAvailable() {
+        let invested = 0;
+        document.querySelectorAll(".adjust-input").forEach((input) => {
+            invested += Number(input.dataset.usd) || 0;
+        });
+        return Math.max(nav - invested, 0);
     }
 
-    function updateWeightSum() {
-        const sum = weightSum();
+    function adjustmentIssues() {
+        let buys = 0;
+        let sells = 0;
+        let active = false;
+        let error = "";
+        document.querySelectorAll(".adjust-input").forEach((input) => {
+            const delta = parseAdjust(input);
+            const usd = Number(input.dataset.usd) || 0;
+            if (Math.abs(delta) >= ADJUST_TOLERANCE) active = true;
+            if (!error && delta < -(usd + ADJUST_TOLERANCE)) {
+                error = `Ajuste de ${input.dataset.symbol} vende mais que a posição`;
+            }
+            if (delta > 0) buys += delta;
+            else sells += -delta;
+        });
+        if (!error && buys > quoteAvailable() + sells + ADJUST_TOLERANCE) {
+            error = "Compras excedem o USDT disponível";
+        }
+        return { active, error };
+    }
+
+    function updateTargets() {
+        let sum = 0;
+        document.querySelectorAll(".adjust-input").forEach((input) => {
+            const usd = Number(input.dataset.usd) || 0;
+            const alvo = nav ? ((usd + parseAdjust(input)) / nav) * 100 : 0;
+            const cell = input.closest("tr").querySelector(".alvo-pct");
+            if (cell) cell.textContent = `${alvo.toFixed(2)}%`;
+            sum += alvo;
+        });
         const el = document.getElementById("weight-sum");
         el.textContent = `${sum.toFixed(2)}%`;
-        el.classList.toggle("up", Math.abs(sum - 100) < 0.01);
-        el.classList.toggle("down", Math.abs(sum - 100) >= 0.01);
-        document.getElementById("balance-btn").disabled = Math.abs(sum - 100) >= 0.01;
+        el.classList.remove("up", "down");
+        const issues = adjustmentIssues();
+        document.getElementById("balance-btn").disabled = !issues.active || Boolean(issues.error);
+        showError(issues.error);
     }
 
     function selectedSymbols() {
@@ -194,12 +227,12 @@
         document.getElementById("liquidate-btn").disabled = selectedSymbols().length === 0;
     }
 
-    function collectWeights() {
-        const weights = {};
-        document.querySelectorAll(".weight-input").forEach((input) => {
-            weights[input.dataset.symbol] = parseWeight(input);
+    function collectAdjustments() {
+        const adjustments = {};
+        document.querySelectorAll(".adjust-input").forEach((input) => {
+            adjustments[input.dataset.symbol] = parseAdjust(input);
         });
-        return weights;
+        return adjustments;
     }
 
     function renderBalanceTable() {
@@ -223,22 +256,22 @@
                 <td class="num">${weight.toFixed(2)}%</td>
                 <td class="num">
                     <input
-                        class="weight-input"
+                        class="adjust-input"
                         type="number"
-                        min="0"
-                        max="100"
                         step="0.01"
                         data-symbol="${escapeHtml(pair.operationCode)}"
-                        value="${weight.toFixed(2)}"
+                        data-usd="${usd}"
+                        value="0"
                     />
                 </td>
+                <td class="num alvo-pct">${weight.toFixed(2)}%</td>
             `;
             tbody.appendChild(tr);
         });
-        tbody.querySelectorAll(".weight-input").forEach((input) => {
-            input.addEventListener("input", updateWeightSum);
+        tbody.querySelectorAll(".adjust-input").forEach((input) => {
+            input.addEventListener("input", updateTargets);
         });
-        updateWeightSum();
+        updateTargets();
     }
 
     function renderLiquidateList() {
@@ -272,15 +305,19 @@
         updateLiquidateButton();
     }
 
-    function renderOrders(targetId, orders) {
+    function renderOrders(targetId, orders, warning) {
         const el = document.getElementById(targetId);
-        if (!orders || !orders.length) {
+        const rows = orders || [];
+        if (!rows.length && !warning) {
             el.hidden = true;
             el.textContent = "";
             return;
         }
         el.hidden = false;
-        el.innerHTML = orders
+        const warningHtml = warning
+            ? `<div class="field-help">${escapeHtml(warning)}</div>`
+            : "";
+        el.innerHTML = warningHtml + rows
             .map((row) => {
                 const skipped = row.skipped ? " (skip)" : "";
                 const qty = row.quantity ? formatQty(row.quantity) : "0";
@@ -353,10 +390,10 @@
         const response = await traderbotFetch("/api/portfolio/rebalance/preview", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ weights: collectWeights() }),
+            body: JSON.stringify({ adjustments: collectAdjustments() }),
         });
         const payload = await readJson(response);
-        renderOrders("balance-preview", payload.orders || payload.sells);
+        renderOrders("balance-preview", payload.orders || payload.sells, payload.warning);
         return payload;
     }
 
@@ -421,7 +458,7 @@
                     environment: payload.environment,
                     detail: orderLines(payload.orders),
                     url: "/api/portfolio/rebalance",
-                    body: { weights: collectWeights() },
+                    body: { adjustments: collectAdjustments() },
                 });
             })
             .catch((err) => showError(err.message));

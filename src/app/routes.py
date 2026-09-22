@@ -767,7 +767,7 @@ def api_rebalance_preview():
     payload = request.get_json(silent=True) or {}
     try:
         settings, client = _spot_client_for_settings()
-        result = preview_rebalance(client, settings.assets, payload.get("weights"))
+        result = preview_rebalance(client, settings.assets, payload.get("adjustments"))
         result["environment"] = settings.environment
         return jsonify(result)
     except PortfolioActionError as exc:
@@ -789,7 +789,7 @@ def api_rebalance_execute():
         result = execute_rebalance(
             client,
             settings.assets,
-            payload.get("weights"),
+            payload.get("adjustments"),
             store,
             payload.get("confirm", ""),
         )
