@@ -171,8 +171,40 @@
         }
     }
 
+    function chartLayoutSnapshot(handle, card) {
+        if (!handle || !handle.chart || !card || !card.canvas) return null;
+        var canvas = card.canvas;
+        var height = canvas.clientHeight;
+        return {
+            height: height > 0 ? height : 0,
+            range: handle.fitted
+                ? handle.chart.timeScale().getVisibleLogicalRange()
+                : null,
+        };
+    }
+
+    function restoreChartLayout(handle, card, snapshot) {
+        if (!handle || !handle.chart || !card || !card.canvas || !snapshot) return;
+        var canvas = card.canvas;
+        requestAnimationFrame(function () {
+            var width = canvas.clientWidth;
+            var height = snapshot.height || canvas.clientHeight;
+            if (width > 0 && height > 0) {
+                handle.chart.resize(width, height);
+            }
+            if (snapshot.range) {
+                try {
+                    handle.chart.timeScale().setVisibleLogicalRange(snapshot.range);
+                } catch (err) {
+                    /* range can be invalid while series relayout */
+                }
+            }
+        });
+    }
+
     function refreshEntryOverlays(entry) {
         var handle = entry.handle;
+        var snapshot = chartLayoutSnapshot(handle, entry.card);
         applyOverlayVisibility(handle);
         if (handle.mode === "asset" && handle.lastAsset) {
             renderLegend(
@@ -182,6 +214,7 @@
                 handle.lastPrecision || 2
             );
         }
+        restoreChartLayout(handle, entry.card, snapshot);
     }
 
     function chartLayoutOptions() {

@@ -1911,7 +1911,12 @@ body.page-market .impact-banner {
 
     .tracking-chart-pane .chart-canvas,
     .tracking-chart-pane .chart-grid.single .chart-canvas {
+        /* Fixed height: legend shrinks when overlays are hidden; flex:1 would
+           give that space to the canvas and autoSize would grow the chart. */
+        flex: 0 0 auto;
+        height: clamp(260px, 52vh, 420px);
         min-height: 260px;
+        max-height: 420px;
     }
 
     .tracking-events-pane .log-list,
