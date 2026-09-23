@@ -15,7 +15,7 @@ from services.asset_variation import (
     format_variation_message,
     unrealized_pnl_pct,
 )
-from services.market_data import MarketDataService, last_candle_epoch
+from services.market_data import MarketDataService, last_candle_epoch, to_epoch_seconds
 from services.order_executor import OrderExecutor
 from services.risk_manager import RiskManager
 from services.outcome_history import fill_from_order, realized_pnl
@@ -49,33 +49,55 @@ class TradingEngine:
         self._sleep = time.sleep if sleep is None else sleep
         self._last_strategy_decision: StrategyDecision | None = None
         self._last_strategy_snapshot: dict | None = None
+        self._reentry_release = False
+        self._reentry_order_working = False
         self.state = BotState(operation_code=bot.operation_code)
         if getattr(bot, "engine", None) is None:
             bot.engine = self
 
     def _arm_fresh_long(self) -> None:
         self.state.need_fresh_long = 1
+        self.state.reentry_pct_stop = 0
+        self.state.reentry_order_id = 0
+        epoch = last_candle_epoch(getattr(self.bot, "stock_data", None))
+        self.state.fresh_long_candle = int(epoch or 0)
         log_event(
             logging.INFO,
             f"Reentry armed for {self.bot.operation_code}: need fresh long",
             operation_code=self.bot.operation_code,
             event="reentry_armed",
+            fresh_long_candle=self.state.fresh_long_candle,
         )
 
     def _apply_reentry_gate(self, decision: StrategyDecision) -> StrategyDecision:
-        """Block buys until a sell signal is seen after a full exit."""
+        """Block buys until a later 4h candle closes still long."""
+        self._reentry_release = False
+        if self._reentry_order_working:
+            if decision.side is True:
+                return StrategyDecision(
+                    None, source=decision.source, reason="reentry_order_open"
+                )
+            return decision
         if not self.state.need_fresh_long:
             return decision
-        if decision.side is False:
+        if decision.reason == "operator_hold" or self._is_operator_hold():
+            return decision
+        if self.bot.actual_trade_position:
+            return decision
+        if self._closed_candle_is_long():
             self.state.need_fresh_long = 0
+            self._reentry_release = True
             log_event(
                 logging.INFO,
-                f"Reentry cleared for {self.bot.operation_code}: sell seen",
+                f"Reentry cleared for {self.bot.operation_code}: closed candle still long",
                 operation_code=self.bot.operation_code,
                 event="reentry_cleared",
+                reason="closed_long",
             )
-            return decision
-        if decision.side is True and not self.bot.actual_trade_position:
+            return StrategyDecision(
+                True, source=decision.source or "main", reason="closed_long"
+            )
+        if decision.side is True:
             log_event(
                 logging.INFO,
                 f"Buy skipped for {self.bot.operation_code}: need fresh long",
@@ -88,14 +110,79 @@ class TradingEngine:
             )
         return decision
 
-    def _strategy_snapshot(self) -> dict | None:
+    def _reentry_buy_is_open(self) -> bool:
+        order_id = int(self.state.reentry_order_id or 0)
+        if not order_id:
+            return False
+        for order in getattr(self.bot, "open_orders", None) or []:
+            try:
+                same = int(order.get("orderId") or 0) == order_id
+            except (TypeError, ValueError):
+                continue
+            if not same:
+                continue
+            if order.get("side") not in (None, "BUY"):
+                continue
+            if order.get("status") not in (None, "NEW", "PARTIALLY_FILLED"):
+                continue
+            return True
+        return False
+
+    def _cancel_reentry_buy(self) -> None:
+        cancel = getattr(self.bot, "cancelAllOrders", None)
+        if cancel is not None:
+            cancel()
+
+    def _settle_pending_reentry(self) -> None:
+        """Keep, cancel, or drop a resting reentry limit while the account is flat."""
+        self._reentry_order_working = False
+        if not int(self.state.reentry_order_id or 0):
+            return
+        if self.bot.actual_trade_position:
+            return
+        if self._reentry_buy_is_open():
+            if self._is_operator_hold() or not self._closed_candle_is_long():
+                self._cancel_reentry_buy()
+                self.state.reentry_order_id = 0
+                self.state.need_fresh_long = 1
+                return
+            self._reentry_order_working = True
+            self.state.need_fresh_long = 0
+            return
+        self.state.reentry_order_id = 0
+        self.state.need_fresh_long = 1
+
+    def _closed_candle_is_long(self) -> bool:
+        """True when a 4h candle opened after the exit has closed still long."""
+        data = getattr(self.bot, "stock_data", None)
+        if data is None or len(data) < 2 or "open_time" not in data.columns:
+            return False
+        if not self.state.fresh_long_candle:
+            epoch = to_epoch_seconds(data["open_time"].iloc[-2])
+            if epoch:
+                self.state.fresh_long_candle = int(epoch)
+            return False
+        closed_open = to_epoch_seconds(data["open_time"].iloc[-2])
+        if closed_open is None or closed_open <= int(self.state.fresh_long_candle):
+            return False
+        snap = self._strategy_snapshot(data.iloc[:-1])
+        if not snap:
+            return False
+        close = snap.get("close")
+        sma = snap.get("sma")
+        if snap.get("trailing") != "long" or close is None or sma is None:
+            return False
+        return float(close) > float(sma)
+
+    def _strategy_snapshot(self, stock_data=None) -> dict | None:
         key = strategy_key_for(getattr(self.bot, "main_strategy", None))
         snap_fn = snapshot_for(key) if key else None
         if snap_fn is None:
             return None
+        frame = self.bot.stock_data if stock_data is None else stock_data
         try:
             return snap_fn(
-                self.bot.stock_data,
+                frame,
                 **(getattr(self.bot, "main_strategy_args", None) or {}),
             )
         except Exception:
@@ -131,6 +218,12 @@ class TradingEngine:
             if not self.bot.actual_trade_position:
                 self.bot.take_profit_index = 0
                 self.state.stop_loss_peak_price = 0.0
+                self.state.reentry_pct_stop = 0
+            elif int(self.state.reentry_order_id or 0):
+                self.state.reentry_pct_stop = 1
+                self.state.reentry_order_id = 0
+                self.state.fresh_long_candle = 0
+                self.state.need_fresh_long = 0
         except BinanceAPIException as e:
             self.risk_manager.record_api_error()
             logging.error("Data update failed for %s: %s", self.bot.operation_code, e)
@@ -529,7 +622,9 @@ class TradingEngine:
     def _handle_stop_loss(self) -> bool:
         atr_stop = None
         atr_side = None
-        if getattr(self.risk_manager, "stop_loss_confirm_with_atr", False):
+        if getattr(self.risk_manager, "stop_loss_confirm_with_atr", False) and not int(
+            self.state.reentry_pct_stop or 0
+        ):
             snap = self._last_strategy_snapshot or self._strategy_snapshot()
             self._last_strategy_snapshot = snap
             if snap:
@@ -686,6 +781,8 @@ class TradingEngine:
                 self.risk_manager.record_trade_pnl(0)
         elif OrderExecutor.is_order_active(order):
             self.bot.actual_trade_position = True
+            if self._reentry_release:
+                self.state.reentry_order_id = int(order.get("orderId") or 0)
         self._save_state()
         return order
 
@@ -787,6 +884,8 @@ class TradingEngine:
             )
             print("------------------------------------------------")
             return
+
+        self._settle_pending_reentry()
 
         regime = self._check_regime()
         breakout = self._check_breakout()
@@ -914,10 +1013,24 @@ class TradingEngine:
         if not self.bot.actual_trade_position and decision.side is True:
             print("Ação final: Comprar")
             self.bot.printStock()
+            released = self._reentry_release
             self._place_buy()
             self._sleep(2)
             self.update_all_data()
             self.bot.printStock()
+            if released and self.bot.actual_trade_position:
+                self.state.reentry_pct_stop = 1
+                self.state.fresh_long_candle = 0
+                self.state.reentry_order_id = 0
+                self.state.need_fresh_long = 0
+            elif released and int(self.state.reentry_order_id or 0):
+                self.state.need_fresh_long = 0
+                self.state.reentry_pct_stop = 0
+            elif released:
+                self.state.need_fresh_long = 1
+                self.state.reentry_pct_stop = 0
+                self.state.reentry_order_id = 0
+                self._reentry_release = False
             # After buy, keep the short cycle so SL/TP stay responsive.
             self.bot.time_to_sleep = self.bot.time_to_trade
             final_action = "Comprar"

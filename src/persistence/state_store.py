@@ -26,6 +26,9 @@ class BotState:
     breakout_cooldown_candles: int = 0
     stop_loss_peak_price: float = 0.0
     need_fresh_long: int = 0
+    fresh_long_candle: int = 0
+    reentry_pct_stop: int = 0
+    reentry_order_id: int = 0
     updated_at: str = ""
 
     def touch(self):
@@ -137,6 +140,9 @@ class StateStore:
             "breakout_cooldown_candles": "INTEGER NOT NULL DEFAULT 0",
             "stop_loss_peak_price": "REAL NOT NULL DEFAULT 0",
             "need_fresh_long": "INTEGER NOT NULL DEFAULT 0",
+            "fresh_long_candle": "INTEGER NOT NULL DEFAULT 0",
+            "reentry_pct_stop": "INTEGER NOT NULL DEFAULT 0",
+            "reentry_order_id": "INTEGER NOT NULL DEFAULT 0",
         }
         for name, ddl in migrations.items():
             if name not in columns:
@@ -215,6 +221,21 @@ class StateStore:
                 if "need_fresh_long" in row.keys()
                 else 0
             ),
+            fresh_long_candle=(
+                int(row["fresh_long_candle"])
+                if "fresh_long_candle" in row.keys()
+                else 0
+            ),
+            reentry_pct_stop=(
+                int(row["reentry_pct_stop"])
+                if "reentry_pct_stop" in row.keys()
+                else 0
+            ),
+            reentry_order_id=(
+                int(row["reentry_order_id"])
+                if "reentry_order_id" in row.keys()
+                else 0
+            ),
             updated_at=row["updated_at"],
         )
 
@@ -228,8 +249,9 @@ class StateStore:
                     last_buy_price, last_sell_price, actual_trade_position,
                     active_mode, grid_support, grid_resistance,
                     breakout_cooldown_candles, stop_loss_peak_price,
-                    need_fresh_long, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    need_fresh_long, fresh_long_candle, reentry_pct_stop,
+                    reentry_order_id, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(operation_code) DO UPDATE SET
                     take_profit_index = excluded.take_profit_index,
                     last_trade_decision = excluded.last_trade_decision,
@@ -242,6 +264,9 @@ class StateStore:
                     breakout_cooldown_candles = excluded.breakout_cooldown_candles,
                     stop_loss_peak_price = excluded.stop_loss_peak_price,
                     need_fresh_long = excluded.need_fresh_long,
+                    fresh_long_candle = excluded.fresh_long_candle,
+                    reentry_pct_stop = excluded.reentry_pct_stop,
+                    reentry_order_id = excluded.reentry_order_id,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -257,6 +282,9 @@ class StateStore:
                     state.breakout_cooldown_candles,
                     state.stop_loss_peak_price,
                     int(state.need_fresh_long or 0),
+                    int(state.fresh_long_candle or 0),
+                    int(state.reentry_pct_stop or 0),
+                    int(state.reentry_order_id or 0),
                     state.updated_at,
                 ),
             )

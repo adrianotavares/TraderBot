@@ -37,11 +37,19 @@ def test_stop_loss_peak_persists_while_open(tmp_path):
         last_buy_price=2000.0,
         actual_trade_position=True,
         stop_loss_peak_price=2100.0,
+        need_fresh_long=1,
+        fresh_long_candle=1_700_000_000,
+        reentry_pct_stop=1,
+        reentry_order_id=42,
     )
     store.save_state(state)
     loaded = store.load_state("ETHUSDT")
     assert loaded.stop_loss_peak_price == 2100.0
     assert loaded.actual_trade_position is True
+    assert loaded.need_fresh_long == 1
+    assert loaded.fresh_long_candle == 1_700_000_000
+    assert loaded.reentry_pct_stop == 1
+    assert loaded.reentry_order_id == 42
 
 
 def test_record_outcome_and_list_newest_first():
