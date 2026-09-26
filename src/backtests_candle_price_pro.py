@@ -2,8 +2,10 @@
 Compara CANDLE-PRICE-PRO com o atr_trend ao vivo.
 
 Nao coloca ordem. Nao altera config/trading.yaml e nao registra a estrategia.
-O baseline usa stop de 5% e take profit de 7% no fechamento de um candle de 4h.
-Ele nao aplica a confirmacao de dois fechamentos nem o trailing ATR do bot ao vivo.
+O alvo da CANDLE-PRICE-PRO e um preco fixo a 2R. 30% sai em 1R, 30% em 2R
+e 40% no trailing. O baseline atr_trend usa stop de 5% e take profit de 7%
+no fechamento de um candle de 4h, sem a confirmacao de dois fechamentos
+e sem o trailing ATR do bot ao vivo.
 """
 
 from __future__ import annotations
@@ -97,6 +99,7 @@ def _atr_trend_row(frame: pd.DataFrame, eval_start: pd.Timestamp) -> dict:
     )
     summary = summarize_price_trades(result["closed_trades"], risk_pct=ATR_TREND_STOP)
     return {
+        "closed_trades": result["closed_trades"],
         "strategy": "atr_trend",
         "return_pct": result["profit_percentage"],
         "trades": summary["trades"],
@@ -115,6 +118,7 @@ def _atr_trend_row(frame: pd.DataFrame, eval_start: pd.Timestamp) -> dict:
 def _cpp_row(m15, h1, h4, eval_start: pd.Timestamp) -> dict:
     result = simulate(m15, h1, h4, eval_start=eval_start)
     return {
+        "closed_trades": result["closed_trades"],
         "strategy": "candle_price_pro",
         "return_pct": result["profit_percentage"],
         "trades": result["trades"],
@@ -128,6 +132,60 @@ def _cpp_row(m15, h1, h4, eval_start: pd.Timestamp) -> dict:
         "setups": result["setups"],
         "gated": result["gated"],
     }
+
+
+def _exit_rows(symbol: str, strategy: str, trades: list[dict], risk_pct: float | None) -> list[dict]:
+    names = ("stop_loss", "take_profit", "signal") if strategy == "atr_trend" else ("stop", "tp1", "tp2", "mark")
+    grouped: dict[str, list[dict]] = {name: [] for name in names}
+    for trade in trades:
+        name = trade.get("reason") if strategy == "atr_trend" else trade.get("exit")
+        grouped.setdefault(name, []).append(trade)
+    rows = []
+    for name in list(names) + [key for key in grouped if key not in names]:
+        bucket = grouped[name]
+        returns = [float(trade["return_pct"]) for trade in bucket]
+        if strategy == "atr_trend":
+            rs = [value / risk_pct for value in returns] if risk_pct else []
+            tp_pnl = sum(returns) if name == "take_profit" else 0.0
+            sl_pnl = sum(returns) if name == "stop_loss" else 0.0
+        else:
+            rs = [float(trade["r"]) for trade in bucket]
+            tp_pnl = sum(float(trade.get("tp_pnl", 0.0)) for trade in bucket)
+            sl_pnl = sum(float(trade.get("sl_pnl", 0.0)) for trade in bucket)
+        count = len(returns)
+        rows.append(
+            {
+                "symbol": symbol,
+                "strategy": strategy,
+                "exit": name,
+                "trades": count,
+                "avg_return_pct": (sum(returns) / count) if count else 0.0,
+                "sum_return_pct": sum(returns),
+                "expectancy_r": (sum(rs) / count) if count else 0.0,
+                "tp_pnl": tp_pnl,
+                "sl_pnl": sl_pnl,
+            }
+        )
+    return rows
+
+
+def _print_exits(rows: list[dict]) -> None:
+    header = (
+        f"{'Ativo':<10} {'Estrategia':<18} {'Saida':<12} {'Trades':>7} "
+        f"{'Ret medio%':>11} {'Soma ret%':>10} {'E[R]':>7}"
+    )
+    print("Take profit e stop. Cada trade entra numa saida so.")
+    print("No atr_trend a saida e o fechamento do candle. Na CANDLE-PRICE-PRO,")
+    print("tp1 e tp2 ja realizaram parte; o resto sai no stop, no trailing ou no fim da janela.")
+    print(header)
+    print("-" * len(header))
+    for row in rows:
+        print(
+            f"{row['symbol']:<10} {row['strategy']:<18} {row['exit']:<12} "
+            f"{row['trades']:>7} {row['avg_return_pct']:>11.2f} "
+            f"{row['sum_return_pct']:>10.2f} {row['expectancy_r']:>7.2f}"
+        )
+    print()
 
 
 def _print_table(rows: list[dict]) -> None:
@@ -215,6 +273,44 @@ def _total(rows: list[dict], strategy: str) -> dict:
     }
 
 
+def _write_exits(rows: list[dict], path: str) -> None:
+    columns = [
+        "symbol",
+        "strategy",
+        "exit",
+        "trades",
+        "avg_return_pct",
+        "sum_return_pct",
+        "expectancy_r",
+        "tp_pnl",
+        "sl_pnl",
+    ]
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(",".join(columns) + "\n")
+        for row in rows:
+            handle.write(
+                ",".join(
+                    [
+                        str(row["symbol"]),
+                        str(row["strategy"]),
+                        str(row["exit"]),
+                        str(row["trades"]),
+                        f"{row['avg_return_pct']:.4f}",
+                        f"{row['sum_return_pct']:.4f}",
+                        f"{row['expectancy_r']:.4f}",
+                        f"{row['tp_pnl']:.4f}",
+                        f"{row['sl_pnl']:.4f}",
+                    ]
+                )
+                + "\n"
+            )
+
+
+def _cpp_cash(rows: list[dict]) -> tuple[float, float]:
+    chosen = [row for row in rows if row["strategy"] == "candle_price_pro" and row["symbol"] != "TOTAL"]
+    return sum(row["tp_pnl"] for row in chosen), sum(row["sl_pnl"] for row in chosen)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Backtest CANDLE-PRICE-PRO vs atr_trend")
     parser.add_argument("--refresh", action="store_true", help="Baixa os klines de novo")
@@ -222,10 +318,12 @@ def main():
     client = Client()
     rows: list[dict] = []
     print(
+        "CANDLE-PRICE-PRO: alvo fixo a 2R. 30% em 1R, 30% em 2R, 40% no trailing.\n"
         "Baseline atr_trend: stop de 5% e take profit de 7% no fechamento de um candle de 4h.\n"
         "Sem a confirmacao de dois fechamentos e sem o trailing ATR do bot ao vivo.\n"
         f"Janela: ultimos {EVAL_DAYS} dias. Taxa 0,1% e slippage 0,05%.\n"
     )
+    exit_rows: list[dict] = []
     for symbol in SYMBOLS:
         print(f"Baixando {symbol}...")
         m15 = fetch_frame(symbol, "15m", refresh=args.refresh, client=client)
@@ -240,14 +338,48 @@ def main():
         print(
             f"  atr_trend {trend['return_pct']:+.2f}% em {trend['trades']} trades | "
             f"candle-price-pro {cpp['return_pct']:+.2f}% em {cpp['trades']} trades "
-            f"({cpp['setups']} entradas de {cpp['gated']} setups; o resto ficou sem 2R)"
+            f"({cpp['setups']} entradas de {cpp['gated']} setups com alvo em 2R)"
         )
+        exit_rows.extend(_exit_rows(symbol, "atr_trend", trend.pop("closed_trades"), ATR_TREND_STOP))
+        exit_rows.extend(_exit_rows(symbol, "candle_price_pro", cpp.pop("closed_trades"), None))
     rows.extend([_total(rows, "atr_trend"), _total(rows, "candle_price_pro")])
+    totals = []
+    for strategy in ("atr_trend", "candle_price_pro"):
+        names = [row["exit"] for row in exit_rows if row["strategy"] == strategy and row["symbol"] == SYMBOLS[0]]
+        for name in names:
+            bucket = [row for row in exit_rows if row["strategy"] == strategy and row["exit"] == name]
+            trades = sum(row["trades"] for row in bucket)
+            sum_return = sum(row["sum_return_pct"] for row in bucket)
+            weighted_r = sum(row["expectancy_r"] * row["trades"] for row in bucket)
+            totals.append(
+                {
+                    "symbol": "TOTAL",
+                    "strategy": strategy,
+                    "exit": name,
+                    "trades": trades,
+                    "avg_return_pct": (sum_return / trades) if trades else 0.0,
+                    "sum_return_pct": sum_return,
+                    "expectancy_r": (weighted_r / trades) if trades else 0.0,
+                    "tp_pnl": sum(row["tp_pnl"] for row in bucket),
+                    "sl_pnl": sum(row["sl_pnl"] for row in bucket),
+                }
+            )
+    exit_rows.extend(totals)
     print()
     _print_table(rows)
+    _print_exits(exit_rows)
+    tp_cash, sl_cash = _cpp_cash(exit_rows)
+    print(
+        "CANDLE-PRICE-PRO, PnL de preco somado nos seis livros de 1000: "
+        f"take profit {tp_cash:+.2f}, stop {sl_cash:+.2f}."
+    )
+    print("Esse PnL nao desconta a taxa. A taxa esta na coluna Taxas da tabela de cima.")
     path = os.path.join(CACHE_DIR, "backtest_candle_price_pro.csv")
+    exits_path = os.path.join(CACHE_DIR, "backtest_candle_price_pro_exits.csv")
     _write_csv(rows, path)
+    _write_exits(exit_rows, exits_path)
     print(f"Resultados em {path}")
+    print(f"Saidas em {exits_path}")
     print("TOTAL e a media do retorno e o pior drawdown entre os seis ativos.")
 
 

@@ -2,6 +2,7 @@
 
 Não registra a estratégia no bot e não lê config/trading.yaml.
 O candle de alta é trava: a soma de pontos não substitui o padrão.
+O alvo é um preço fixo a 2R da entrada. O swing de 1h não define o take profit.
 """
 
 from __future__ import annotations
@@ -43,6 +44,14 @@ SCORE_WEIGHTS = {
 
 def score_points(**flags: bool) -> int:
     return sum(SCORE_WEIGHTS[name] for name, on in flags.items() if on)
+
+
+def fixed_target(entry: float, stop: float) -> float | None:
+    """Preço do alvo: a entrada mais 2R. Não usa a máxima de swing."""
+    risk = float(entry) - float(stop)
+    if risk <= 0:
+        return None
+    return float(entry) + MIN_REWARD_RISK * risk
 
 
 def reward_risk(entry: float, stop: float, resistance: float | None) -> float | None:
@@ -134,7 +143,6 @@ def prepare(frame: pd.DataFrame) -> pd.DataFrame:
     out["atr"] = atr(out, window=14)
     out["adx"] = adx(out, period=14)
     out["vol_sma"] = out["volume"].rolling(20).mean()
-    out["swing_high"] = _swing_mask(out["high_price"], kind="high")
     out["swing_low"] = _swing_mask(out["low_price"], kind="low")
     return out
 
@@ -144,31 +152,29 @@ def pattern_at(frame: pd.DataFrame, index: int) -> str | None:
         return None
     row = frame.iloc[index]
     prev = frame.iloc[index - 1]
+    if index >= 12:
+        first = frame.iloc[index - 2]
+        prior = [
+            abs(float(frame["close_price"].iloc[j]) - float(frame["open_price"].iloc[j]))
+            for j in range(index - 12, index - 2)
+        ]
+        avg_body = float(np.mean(prior)) if prior else 0.0
+        if morning_star(
+            first["open_price"],
+            first["close_price"],
+            prev["open_price"],
+            prev["close_price"],
+            row["open_price"],
+            row["close_price"],
+            avg_body,
+        ):
+            return "morning_star"
     if bullish_engulfing(
         prev["open_price"], prev["close_price"], row["open_price"], row["close_price"]
     ):
         return "engulfing"
     if hammer(row["open_price"], row["high_price"], row["low_price"], row["close_price"]):
         return "hammer"
-    if index < 12:
-        return None
-    first = frame.iloc[index - 2]
-    second = frame.iloc[index - 1]
-    prior = [
-        abs(float(frame["close_price"].iloc[j]) - float(frame["open_price"].iloc[j]))
-        for j in range(index - 12, index - 2)
-    ]
-    avg_body = float(np.mean(prior)) if prior else 0.0
-    if morning_star(
-        first["open_price"],
-        first["close_price"],
-        second["open_price"],
-        second["close_price"],
-        row["open_price"],
-        row["close_price"],
-        avg_body,
-    ):
-        return "morning_star"
     return None
 
 
@@ -200,17 +206,6 @@ def _last_swing_low(frame: pd.DataFrame, index: int) -> float | None:
     return float(hits["low_price"].iloc[-1])
 
 
-def _nearest_resistance(frame: pd.DataFrame, index: int, price: float) -> float | None:
-    confirmed = index - 2
-    if confirmed < 0:
-        return None
-    hits = frame.iloc[: confirmed + 1]
-    hits = hits[hits["swing_high"] & (hits["high_price"] > price)]
-    if hits.empty:
-        return None
-    return float(hits["high_price"].min())
-
-
 def _bullish_stack(row) -> bool:
     values = [row["ema20"], row["ema50"], row["ema200"], row["close_price"], row["atr"]]
     if not all(_finite(value) for value in values):
@@ -226,7 +221,7 @@ def _bullish_stack(row) -> bool:
     )
 
 
-def _flags(h4, h1, pattern: str | None, pullback: bool) -> dict:
+def _flags(h4, h1, pattern: str | None, pullback: bool, *, breakout: bool = False) -> dict:
     rsi_value = h1["rsi"]
     return {
         "h4": _bullish_stack(h4) and _finite(h4["adx"]) and float(h4["adx"]) > 20,
@@ -241,7 +236,7 @@ def _flags(h4, h1, pattern: str | None, pullback: bool) -> dict:
         and float(h1["macd"]) > float(h1["macd_signal"]),
         "rsi": _finite(rsi_value) and 40 <= float(rsi_value) <= 65,
         "adx": _finite(h4["adx"]) and float(h4["adx"]) > 20,
-        "breakout": True,
+        "breakout": breakout,
     }
 
 
@@ -277,6 +272,8 @@ class _Position:
     realized: float
     fees: float
     filled_at_open: bool
+    tp_pnl: float = 0.0
+    sl_pnl: float = 0.0
 
 
 def _last_closed(frame: pd.DataFrame, close_times: pd.Series, asof: pd.Timestamp) -> int | None:
@@ -286,12 +283,19 @@ def _last_closed(frame: pd.DataFrame, close_times: pd.Series, asof: pd.Timestamp
     return position
 
 
-def _find_setups(h1: pd.DataFrame, h4: pd.DataFrame, h4_close: pd.Series) -> tuple[list[_Setup], int]:
+def _find_setups(
+    h1: pd.DataFrame,
+    h4: pd.DataFrame,
+    h4_close: pd.Series,
+    eval_start: pd.Timestamp | None = None,
+) -> tuple[list[_Setup], int]:
     duration = pd.Timedelta(hours=1)
     setups: list[_Setup] = []
     gated = 0
     for index in range(len(h1)):
         closed_at = h1["open_time"].iloc[index] + duration
+        if eval_start is not None and closed_at + SETUP_LIFE <= eval_start:
+            continue
         h4_index = _last_closed(h4, h4_close, closed_at)
         if h4_index is None:
             continue
@@ -306,7 +310,7 @@ def _find_setups(h1: pd.DataFrame, h4: pd.DataFrame, h4_close: pd.Series) -> tup
             for level in (row["ema20"], row["ema50"], swing_low)
             if level is not None
         )
-        flags = _flags(h4.iloc[h4_index], row, pattern, pullback)
+        flags = _flags(h4.iloc[h4_index], row, pattern, pullback, breakout=False)
         required = (
             flags["h4"]
             and flags["pullback"]
@@ -317,16 +321,17 @@ def _find_setups(h1: pd.DataFrame, h4: pd.DataFrame, h4_close: pd.Series) -> tup
             and flags["adx"]
         )
         score = score_points(**flags)
-        if not required or score < SCORE_MIN:
+        entry_score = score + SCORE_WEIGHTS["breakout"]
+        if not required or entry_score < SCORE_MIN:
             continue
         gated += 1
         trigger = float(row["high_price"])
         structure = _pattern_low(h1, index, pattern)
         stop = stop_price(trigger, structure, atr_value)
-        resistance = _nearest_resistance(h1, index, trigger)
+        resistance = fixed_target(trigger, stop) if stop is not None else None
         if not should_enter(
             pattern=True,
-            score=score,
+            score=entry_score,
             entry=trigger,
             stop=stop if stop is not None else trigger,
             resistance=resistance,
@@ -340,7 +345,7 @@ def _find_setups(h1: pd.DataFrame, h4: pd.DataFrame, h4_close: pd.Series) -> tup
                 structure_low=structure,
                 atr=atr_value,
                 resistance=resistance,
-                score=score,
+                score=entry_score,
                 pattern=pattern,
             )
         )
@@ -383,7 +388,9 @@ def _step_position(
         if price_low > position.stop:
             return None
         raw = open_price if open_price <= position.stop else position.stop
+        before = position.realized
         sold = _sell(position, position.qty, raw, fee_rate, slippage)
+        position.sl_pnl += position.realized - before
         trade = _closed_trade(position, bar.open_time, "stop")
         return None, trade, proceeds + sold
 
@@ -391,7 +398,9 @@ def _step_position(
         nonlocal proceeds
         if position.qty <= 0 or high < target:
             return
+        before = position.realized
         proceeds += _sell(position, position.original_qty * portion, target, fee_rate, slippage)
+        position.tp_pnl += position.realized - before
         if kind == "tp1":
             position.tp1_done = True
             position.stop = max(position.stop, position.entry)
@@ -404,6 +413,10 @@ def _step_position(
         position.highest = max(position.highest, high)
         trail_atr = atr_value if _finite(atr_value) and atr_value > 0 else position.atr
         position.stop = max(position.stop, position.highest - TRAIL_ATR_MULT * trail_atr)
+
+    # Abertura já perdida: sai nesse preço, sem realizar alvo na máxima.
+    if not skip_prior_low and open_price <= position.stop:
+        return hit_stop(open_price)
 
     if bullish:
         if not skip_prior_low:
@@ -442,19 +455,33 @@ def _closed_trade(position: _Position, exit_time, reason: str) -> dict:
         "score": position.score,
         "pattern": position.pattern,
         "reason": reason,
+        "exit": _exit_name(position, reason),
+        "tp_pnl": position.tp_pnl,
+        "sl_pnl": position.sl_pnl,
     }
+
+
+def _exit_name(position: _Position, reason: str) -> str:
+    if reason == "mark":
+        return "mark"
+    if position.tp2_done:
+        return "tp2"
+    if position.tp1_done:
+        return "tp1"
+    return "stop"
 
 
 def _open_position(setup: _Setup, bar, cash: float, fee_rate: float, slippage: float):
     raw = setup.trigger if float(bar.open_price) < setup.trigger else float(bar.open_price)
     fill = raw * (1 + slippage)
     stop = stop_price(fill, setup.structure_low, setup.atr)
+    target = fixed_target(fill, stop) if stop is not None else None
     if stop is None or not should_enter(
         pattern=True,
         score=setup.score,
         entry=fill,
         stop=stop,
-        resistance=setup.resistance,
+        resistance=target,
     ):
         return cash, None, 0.0
     risk = fill - stop
@@ -504,12 +531,12 @@ def simulate(
     m15 = prepare(frame_15m)
     h1_close = h1["open_time"] + pd.Timedelta(hours=1)
     h4_close = h4["open_time"] + pd.Timedelta(hours=4)
-    setups, gated = _find_setups(h1, h4, h4_close)
     eval_start = pd.Timestamp(eval_start)
     if eval_start.tzinfo is None:
         eval_start = eval_start.tz_localize("America/Sao_Paulo")
     else:
         eval_start = eval_start.tz_convert("America/Sao_Paulo")
+    setups, gated = _find_setups(h1, h4, h4_close, eval_start)
 
     cash = float(initial_balance)
     position: _Position | None = None
@@ -519,9 +546,8 @@ def simulate(
     setup_cursor = 0
     consumed_ready: pd.Timestamp | None = None
 
-    def _book_close(closed: dict, sold: float) -> None:
-        nonlocal cash, position
-        cash += sold
+    def _book_close(closed: dict) -> None:
+        nonlocal position
         trades.append(closed)
         day = pd.Timestamp(closed["exit_time"]).tz_convert("America/Sao_Paulo").date()
         day_pnl[day] = day_pnl.get(day, 0.0) + closed["pnl"] - closed["fees"]
@@ -538,8 +564,9 @@ def simulate(
             position, closed, sold = _step_position(
                 position, bar, bar_atr, fee_rate, slippage
             )
+            cash += sold
             if closed is not None:
-                _book_close(closed, sold)
+                _book_close(closed)
         if position is None:
             day = pd.Timestamp(bar.open_time).date()
             locked = day_pnl.get(day, 0.0) <= -DAILY_LOSS_PCT * initial_balance
@@ -561,11 +588,11 @@ def simulate(
                 and regime_ok
                 and float(bar.high_price) >= setup.trigger
             ):
-                consumed_ready = setup.ready
                 cash, position, _buy_fee = _open_position(
                     setup, bar, cash, fee_rate, slippage
                 )
                 if position is not None:
+                    consumed_ready = setup.ready
                     position, closed, sold = _step_position(
                         position,
                         bar,
@@ -574,8 +601,9 @@ def simulate(
                         slippage,
                         opened_this_bar=True,
                     )
+                    cash += sold
                     if closed is not None:
-                        _book_close(closed, sold)
+                        _book_close(closed)
         mark = float(bar.close_price)
         equity.append(cash + (position.qty * mark if position is not None else 0.0))
 
@@ -596,8 +624,8 @@ def simulate(
 def _metrics(trades: list[dict], equity: list[float], total_fees: float, initial: float, setups: int) -> dict:
     returns = [trade["return_pct"] for trade in trades]
     rs = [trade["r"] for trade in trades]
-    wins = [trade["pnl"] for trade in trades if trade["pnl"] > 0]
-    losses = [trade["pnl"] for trade in trades if trade["pnl"] < 0]
+    wins = [value for value in returns if value > 0]
+    losses = [value for value in returns if value < 0]
     gross_loss = abs(sum(losses))
     profit_factor = (sum(wins) / gross_loss) if gross_loss > 0 else (float("inf") if wins else 0.0)
     final = equity[-1] if equity else initial
