@@ -280,6 +280,40 @@ def test_check_breakout_skips_without_snapshot(store):
     assert engine._check_breakout() is None
 
 
+def test_open_trend_position_is_not_grid_inventory(store):
+    engine = _engine(store)
+    engine.bot.actual_trade_position = True
+    engine.state.active_mode = "trend"
+    assert engine._holds_trend_position() is True
+
+    engine.state.active_mode = "grid"
+    assert engine._holds_trend_position() is False
+
+    engine.state.active_mode = "trend"
+    engine.bot.actual_trade_position = False
+    assert engine._holds_trend_position() is False
+
+
+def test_grid_cycle_does_not_run_while_a_trend_position_is_open(store):
+    engine = _engine(store)
+    engine.bot.actual_trade_position = True
+    engine.state.active_mode = "trend"
+    called = []
+    engine._run_grid_cycle = lambda regime: called.append(regime)
+    assert engine._take_grid_cycle(None) is False
+    assert called == []
+
+
+def test_grid_cycle_runs_for_a_flat_account(store):
+    engine = _engine(store)
+    engine.bot.actual_trade_position = False
+    called = {}
+    engine._run_grid_cycle = lambda regime: called.setdefault("regime", regime)
+    regime = RegimeResult(regime="LATERAL", score=4, adx_value=15.0, rsi_value=50.0)
+    assert engine._take_grid_cycle(regime) is True
+    assert called["regime"] is regime
+
+
 def test_shutdown_grid_clears_frozen_channel(store):
     engine = _engine(store)
     engine.grid_manager = SimpleNamespace(shutdown=lambda *_a, **_k: 0)

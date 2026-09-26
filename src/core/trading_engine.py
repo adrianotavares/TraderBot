@@ -291,6 +291,23 @@ class TradingEngine:
             breakout_cooldown_candles=self.state.breakout_cooldown_candles,
         )
 
+    def _holds_trend_position(self) -> bool:
+        """A trend lot is not grid inventory. Grid and pause must leave its exit alone."""
+        return bool(self.bot.actual_trade_position) and self.state.active_mode != "grid"
+
+    def _take_grid_cycle(self, regime) -> bool:
+        """Run the grid only when it would not sell an open trend position."""
+        if self._holds_trend_position():
+            log_event(
+                logging.INFO,
+                f"Grid skipped for {self.bot.operation_code}: trend position still open",
+                operation_code=self.bot.operation_code,
+                event="grid_skipped_trend_position",
+            )
+            return False
+        self._run_grid_cycle(regime)
+        return True
+
     def _resolve_regime_action(self, regime, breakout) -> str:
         return resolve_regime_action(
             regime,
@@ -923,8 +940,8 @@ class TradingEngine:
                 f"— reativando atr_trend"
             )
         elif action == "grid" and not operator_hold:
-            self._run_grid_cycle(regime)
-            return
+            if self._take_grid_cycle(regime):
+                return
 
         elif action == "grid" and operator_hold:
             log_event(
@@ -933,6 +950,15 @@ class TradingEngine:
                 operation_code=self.bot.operation_code,
                 event="operator_hold_blocks_entry",
                 reason="grid",
+            )
+
+        elif action == "pause" and self._holds_trend_position():
+            log_event(
+                logging.INFO,
+                f"Regime pause keeps the exit open for {self.bot.operation_code}",
+                operation_code=self.bot.operation_code,
+                event="regime_pause_allows_exit",
+                regime=regime.regime if regime else None,
             )
 
         elif action == "pause":
